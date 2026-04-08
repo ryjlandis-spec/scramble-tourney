@@ -55,8 +55,12 @@ const PROS = [
 ];
 const PROS_MAP = Object.fromEntries(PROS.map(p => [p.id, p]));
 
-const DEFAULT_PAR = [4,4,3,4,5,3,4,5,4, 4,3,4,5,3,4,5,4,4]; // par 72
-const STORAGE_KEY = 'scramble_golf_v3';
+const DEFAULT_PAR    = [4,3,4,3,3,5,3,3,4, 3,4,3,3,4,3,4,3,3]; // par 62
+const HOLE_HCP       = [3,15,17,1,13,7,11,5,9, 16,2,14,12,8,10,4,6,18];
+const HOLE_YDS       = [356,150,262,156,158,397,150,168,301, 143,333,97,154,260,129,321,149,118];
+const COURSE_RATING  = 59.6;
+const COURSE_SLOPE   = 100;
+const STORAGE_KEY    = 'scramble_golf_v6';
 const ESPN_API = 'https://site.web.api.espn.com/apis/site/v2/sports/golf/leaderboard?league=pga';
 
 // Normalize a name for fuzzy matching (last name + first initial)
@@ -87,97 +91,111 @@ const INIT = {
 };
 
 
-// ── STROKES GAINED ENGINE ───────────────────────────────────────────────────
-// Simplified Broadie-style baseline: expected strokes by distance (yards) & lie
+// ── STROKES GAINED ENGINE ─────────────────────────────────────────────────────
+// Scratch-golfer baseline tables.
+// Green distances are in FEET; all others in YARDS.
 // Lie types: 'tee' | 'fairway' | 'rough' | 'bunker' | 'fringe' | 'green'
 
 const SG_BASELINE = {
-  // [distance_yards]: expected_strokes from fairway/approach
+  // Fairway/Tee (yards) — scratch calibrated
   fairway: [
-    [0,0],[1,1.00],[2,1.01],[3,1.02],[5,1.04],[7,1.07],[10,1.10],
-    [15,1.18],[20,1.25],[25,1.32],[30,1.40],[40,1.55],[50,1.65],
-    [75,1.85],[100,2.10],[125,2.30],[150,2.50],[175,2.65],[200,2.80],
-    [225,2.95],[250,3.10],[275,3.25],[300,3.40],[350,3.65],[400,3.90],
-    [450,4.10],[500,4.30],[550,4.55],[600,4.80],
+    [0,0],[5,1.10],[10,1.25],[15,1.38],[20,1.50],[25,1.62],[30,1.72],
+    [40,1.90],[50,2.05],[75,2.35],[100,2.65],[125,2.85],[150,3.05],
+    [175,3.22],[200,3.42],[225,3.60],[250,3.80],[275,3.98],[300,4.18],
+    [350,4.50],[400,4.75],[450,4.95],
   ],
   rough: [
-    [0,0],[1,1.01],[2,1.02],[3,1.04],[5,1.07],[7,1.10],[10,1.15],
-    [15,1.23],[20,1.32],[25,1.40],[30,1.52],[40,1.67],[50,1.80],
-    [75,2.00],[100,2.25],[125,2.47],[150,2.67],[175,2.83],[200,2.97],
-    [225,3.12],[250,3.27],[275,3.42],[300,3.57],[350,3.82],[400,4.05],
-    [450,4.27],[500,4.47],[550,4.72],[600,4.97],
+    [0,0],[5,1.15],[10,1.32],[15,1.47],[20,1.60],[25,1.74],[30,1.87],
+    [40,2.07],[50,2.22],[75,2.53],[100,2.85],[125,3.07],[150,3.28],
+    [175,3.46],[200,3.68],[225,3.87],[250,4.07],[300,4.45],[350,4.75],
+    [400,5.00],
   ],
   bunker: [
-    [0,0],[1,1.03],[2,1.05],[3,1.07],[5,1.12],[7,1.17],[10,1.24],
-    [15,1.36],[20,1.48],[25,1.59],[30,1.72],[40,1.92],[50,2.07],
-    [75,2.33],[100,2.60],[125,2.82],[150,3.02],[175,3.18],[200,3.33],
-    [250,3.57],[300,3.82],[350,4.07],[400,4.32],
+    [0,0],[5,1.20],[10,1.40],[15,1.58],[20,1.75],[25,1.90],[30,2.05],
+    [40,2.28],[50,2.48],[75,2.82],[100,3.12],[125,3.38],[150,3.60],
+    [175,3.80],[200,4.00],[250,4.40],[300,4.75],
   ],
   fringe: [
-    [0,0],[1,1.00],[2,1.01],[3,1.02],[5,1.06],[7,1.10],[10,1.16],
-    [15,1.25],[20,1.35],[25,1.44],[30,1.53],[40,1.68],[50,1.78],
-    [75,1.98],[100,2.18],
+    [0,0],[3,1.05],[5,1.12],[7,1.20],[10,1.30],[15,1.45],[20,1.58],
+    [25,1.70],[30,1.80],[40,1.95],[50,2.07],[75,2.28],[100,2.45],
   ],
+  // Green table is in FEET
   green: [
-    [0,0],[1,1.00],[2,1.00],[3,1.01],[4,1.03],[5,1.07],[6,1.12],
-    [7,1.17],[8,1.21],[9,1.25],[10,1.30],[12,1.38],[14,1.45],
-    [16,1.52],[18,1.58],[20,1.64],[25,1.74],[30,1.82],[35,1.88],
-    [40,1.93],[50,2.01],[60,2.08],[70,2.14],[80,2.19],[90,2.23],[100,2.27],
+    [0,0],[1,1.00],[2,1.00],[3,1.04],[4,1.09],[5,1.15],[6,1.22],
+    [7,1.28],[8,1.34],[9,1.40],[10,1.46],[12,1.56],[15,1.67],
+    [18,1.76],[20,1.82],[25,1.92],[30,2.00],[40,2.10],[50,2.18],
+    [60,2.24],[80,2.30],[100,2.35],
   ],
 };
-// Tee shots use fairway baseline adjusted for longer distances
 SG_BASELINE.tee = SG_BASELINE.fairway;
 
-function sgLookup(distYards, lie) {
-  const table = SG_BASELINE[lie] || SG_BASELINE.fairway;
-  const d = Math.max(0, distYards);
-  // Find surrounding breakpoints and interpolate
+function interpolate(table, d) {
+  const v = Math.max(0, d);
   for (let i = 0; i < table.length - 1; i++) {
-    const [d0, v0] = table[i];
-    const [d1, v1] = table[i + 1];
-    if (d <= d1) {
-      const t = d1 === d0 ? 0 : (d - d0) / (d1 - d0);
-      return v0 + t * (v1 - v0);
+    const [d0,v0] = table[i], [d1,v1] = table[i+1];
+    if (v <= d1) {
+      const t = d1===d0 ? 0 : (v-d0)/(d1-d0);
+      return v0 + t*(v1-v0);
     }
   }
-  return table[table.length - 1][1];
+  return table[table.length-1][1];
 }
 
-// Calculate SG for a single shot
-// shot = { distBefore, lieBefore, distAfter, lieAfter }
-function calcShotSG(shot) {
-  const before = sgLookup(shot.distBefore, shot.lieBefore);
-  const after  = shot.lieAfter === 'hole' ? 0 : sgLookup(shot.distAfter, shot.lieAfter);
+// positions = [{lie, dist}] where green dist is in feet, others in yards
+// last position should have lie='holed' OR we compute final shot as holed
+function sgLookup(dist, lie) {
+  return interpolate(SG_BASELINE[lie] || SG_BASELINE.fairway, dist);
+}
+
+// SG between two consecutive positions (one stroke played)
+function segmentSG(from, to) {
+  const before = sgLookup(from.dist, from.lie);
+  const after  = to.lie === 'holed' ? 0 : sgLookup(to.dist, to.lie);
   return parseFloat((before - after - 1).toFixed(2));
 }
 
-// Determine SG category from a shot
-// holeIndex needed to identify par 3 tee shots (no OTT on par 3)
-function sgCategory(shot, holeIndex, par) {
+// SG category for a segment
+function segCategory(from, holeIndex, par) {
   const holePar = par[holeIndex] || 4;
-  if (shot.lieBefore === 'tee') return holePar === 3 ? 'app' : 'ott';
-  if (shot.lieAfter === 'hole' || shot.lieBefore === 'green') return 'putt';
-  if (shot.distBefore <= 30) return 'arg';
+  if (from.lie === 'tee') return holePar === 3 ? 'app' : 'ott';
+  if (from.lie === 'green') return 'putt';
+  if (from.dist <= 30) return 'arg'; // yards
   return 'app';
 }
 
-// Summarize SG across all holes for a team
+// Backwards compat: old shot model
+function calcShotSG(shot) {
+  if (shot.lieBefore !== undefined) {
+    return segmentSG({lie:shot.lieBefore,dist:shot.distBefore},{lie:shot.lieAfter,dist:shot.distAfter});
+  }
+  return 0;
+}
+function sgCategory(shot, hi, par) { return segCategory({lie:shot.lieBefore,dist:shot.distBefore},hi,par); }
+
+// Compute SG from a positions array
+function calcPositionsSG(positions) {
+  if (!positions || positions.length < 2) return [];
+  return positions.slice(0,-1).map((_,i)=>segmentSG(positions[i],positions[i+1]));
+}
+
+// Summarize SG across all holes for a team (supports both old shot model and new positions model)
 function calcTeamSG(team, par) {
-  const totals = { ott: 0, app: 0, arg: 0, putt: 0, total: 0 };
-  (team.shots || []).forEach((holeShots, h) => {
-    if (!holeShots) return;
-    holeShots.forEach(shot => {
-      const sg = calcShotSG(shot);
-      const cat = sgCategory(shot, h, par);
-      totals[cat] = parseFloat((totals[cat] + sg).toFixed(2));
-      totals.total = parseFloat((totals.total + sg).toFixed(2));
+  const totals = { ott:0, app:0, arg:0, putt:0, total:0 };
+  (team.shots||[]).forEach((holeData, h) => {
+    if (!holeData) return;
+    const positions = Array.isArray(holeData) && holeData[0]?.lie !== undefined ? holeData : null;
+    if (!positions || positions.length < 2) return;
+    positions.slice(0,-1).forEach((_,i) => {
+      const sg  = segmentSG(positions[i], positions[i+1]);
+      const cat = segCategory(positions[i], h, par);
+      totals[cat]  = parseFloat((totals[cat]+sg).toFixed(2));
+      totals.total = parseFloat((totals.total+sg).toFixed(2));
     });
   });
   return totals;
 }
 
-const CLUBS = ['Driver','3W','5W','Hybrid','2i','3i','4i','5i','6i','7i','8i','9i','PW','GW','SW','LW','Putter','Penalty'];
-const LIES  = ['tee','fairway','rough','bunker','fringe','green'];
+const LIES = ['tee','fairway','rough','bunker','fringe','green'];
 
 // ── STORAGE ────────────────────────────────────────────────────────────────
 function load() {
@@ -239,9 +257,15 @@ function calcSkins(teams, par, skinsAmt) {
   return result;
 }
 
+function courseHandicap(idx) {
+  const totalPar = DEFAULT_PAR.reduce((a,b)=>a+b,0);
+  return Math.round(idx * (COURSE_SLOPE / 113) + (COURSE_RATING - totalPar));
+}
 function teamHandicap(hcp1, hcp2) {
-  const low = Math.min(hcp1, hcp2);
-  const high = Math.max(hcp1, hcp2);
+  const ch1 = courseHandicap(hcp1);
+  const ch2 = courseHandicap(hcp2);
+  const low  = Math.min(ch1, ch2);
+  const high = Math.max(ch1, ch2);
   return Math.round(0.75 * low + 0.25 * high);
 }
 
@@ -317,7 +341,7 @@ html,body{background:var(--bg);color:var(--cream);font-family:'Inter',sans-serif
 .lb-big.dim{color:var(--muted);}
 .lb-detail{font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;margin-top:2px;}
 /* Scorecard */
-.sc-grid{display:grid;grid-template-columns:28px 24px 1fr 44px;gap:6px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);}
+.sc-grid{display:grid;grid-template-columns:30px 36px 20px 1fr 42px;gap:5px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);}
 .sc-grid:last-child{border-bottom:none;}
 .hn{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);text-align:center;}
 .hinp{width:100%;height:38px;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;color:var(--cream);font-family:'DM Mono',monospace;font-size:16px;text-align:center;outline:none;appearance:textfield;}
@@ -460,6 +484,8 @@ function SetupView({ state, setState, adminMode }) {
                 ['Skins', `$${tournament.skinsPerHole}/hole`],
                 ['Overall Buy-In', `$${tournament.buyIn}/team`],
                 ['Overall Pot', `$${teams.length * tournament.buyIn}`],
+                ['Course Rating', `${COURSE_RATING} / Slope ${COURSE_SLOPE}`],
+                ['Par', `${DEFAULT_PAR.reduce((a,b)=>a+b,0)}`],
               ].map(([k,v]) => v && (
                 <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'1px solid var(--border)'}}>
                   <span style={{fontSize:12,color:'var(--muted)'}}>{k}</span>
@@ -662,155 +688,224 @@ function DraftView({ state, setState }) {
 }
 
 function ShotModal({ team, holeIndex, par, onClose, onSave }) {
-  const holePar = par[holeIndex] || 4;
-  const holeNum = holeIndex + 1;
+  const holePar  = par[holeIndex] || 4;
+  const holeNum  = holeIndex + 1;
+  const holeYds  = HOLE_YDS[holeIndex] || 0;
+
+  // Positions: [{lie, dist}] — green dist in feet, others in yards
+  // Pre-populate position 0 from hole yardage
   const existing = (team.shots?.[holeIndex] || []);
-  const [shots, setShots] = useState(existing.length > 0 ? existing : [
-    { lieBefore: 'tee', distBefore: 0, club: 'Driver', lieAfter: 'fairway', distAfter: 0 }
-  ]);
+  const defaultPos = [
+    { lie:'tee', dist: holeYds, player: team.player1 },
+    { lie:'fairway', dist: 0, player: team.player1 },
+  ];
+  const [positions, setPositions] = useState(
+    existing.length >= 2 ? existing : defaultPos
+  );
 
-  function updShot(i, field, val) {
-    setShots(prev => prev.map((s,idx) => idx===i ? {...s, [field]: val} : s));
+  function updPos(i, field, val) {
+    setPositions(p => p.map((pos,idx) => idx===i ? {...pos,[field]:val} : pos));
   }
 
-  function addShot(i) {
-    const prev = shots[i];
-    const newShot = {
-      lieBefore: prev.lieAfter || 'fairway',
-      distBefore: prev.distAfter || 0,
-      club: prev.lieAfter === 'green' ? 'Putter' : '7i',
-      lieAfter: 'green',
-      distAfter: 0,
-    };
-    setShots(s => [...s.slice(0, i+1), newShot, ...s.slice(i+1)]);
+  function addPos() {
+    const last = positions[positions.length-1];
+    const nextLie = last.lie==='green' ? 'holed' : last.lie==='fringe' ? 'green' : last.lie;
+    setPositions(p => [...p, { lie: nextLie==='holed'?'green':nextLie, dist:0, player: team.player1 }]);
   }
 
-  function removeShot(i) {
-    if (shots.length <= 1) return;
-    setShots(s => s.filter((_,idx) => idx !== i));
+  function removePos(i) {
+    if (i === 0 || positions.length <= 2) return; // keep tee + at least one more
+    setPositions(p => p.filter((_,idx) => idx!==i));
   }
 
-  const sgCats = { ott:'OTT', app:'APP', arg:'ARG', putt:'PUTT' };
+  function markHoled() {
+    setPositions(p => {
+      const last = p[p.length-1];
+      if (last.lie === 'holed') return p;
+      return [...p, { lie:'holed', dist:0 }];
+    });
+  }
+
+  const isHoled = positions[positions.length-1]?.lie === 'holed';
+  const sgValues = positions.length >= 2
+    ? positions.slice(0,-1).map((_,i) => segmentSG(positions[i], positions[i+1]))
+    : [];
+  const totalSG = sgValues.reduce((s,v)=>s+v,0);
+
+  const catLabels = { ott:'OTT', app:'APP', arg:'ARG', putt:'PUTT' };
 
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal" onClick={e=>e.stopPropagation()}>
         <div className="modal-hdr">
           <div>
-            <div style={{fontFamily:'Playfair Display,serif',fontSize:17,color:'var(--gold)'}}>Hole {holeNum} · Par {holePar}</div>
-            <div style={{fontSize:11,color:'var(--muted)',fontFamily:'DM Mono,monospace'}}>Tap hole number on scorecard to open · tap outside to close</div>
+            <div style={{fontFamily:'Playfair Display,serif',fontSize:17,color:'var(--gold)'}}>
+              Hole {holeNum} · Par {holePar} · {holeYds}y
+            </div>
+            <div style={{fontSize:11,color:'var(--muted)',fontFamily:'DM Mono,monospace'}}>
+              Enter each ball position. Tap hole # to open. Green = feet.
+            </div>
           </div>
-          <button className="btn sm sec" onClick={()=>onSave(shots)}>Save</button>
+          <button className="btn sm" onClick={()=>onSave(positions)}>Save</button>
         </div>
 
-        {shots.map((shot, i) => {
-          const sg = calcShotSG(shot);
-          const cat = sgCategory(shot, holeIndex, par);
+        {/* Position rows */}
+        {positions.map((pos, i) => {
+          const isLast = i === positions.length - 1;
+          const isGreen = pos.lie === 'green';
+          const sg = i < sgValues.length ? sgValues[i] : null;
+          const cat = i < sgValues.length ? segCategory(pos, holeIndex, par) : null;
+
+          if (pos.lie === 'holed') {
+            return (
+              <div key={i} className="shot-row" style={{textAlign:'center',padding:'10px'}}>
+                <span style={{fontSize:13,color:'var(--gold)',fontFamily:'DM Mono,monospace'}}>⛳ Holed</span>
+                {i > 0 && <button className="btn sm danger" style={{marginLeft:10,padding:'3px 8px'}} onClick={()=>removePos(i)}>✕</button>}
+              </div>
+            );
+          }
+
           return (
             <div key={i} className="shot-row">
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
                 <div style={{display:'flex',alignItems:'center',gap:6}}>
-                  <span className="shot-num">S{i+1}</span>
-                  <span style={{fontSize:10,fontFamily:'DM Mono,monospace',color:'var(--muted)',background:'var(--bg)',padding:'2px 6px',borderRadius:4}}>
-                    {sgCats[cat]}
-                  </span>
+                  <span className="shot-num">P{i+1}</span>
+                  {i===0 && <span style={{fontSize:9,fontFamily:'DM Mono,monospace',color:'var(--muted)',background:'var(--bg)',padding:'2px 6px',borderRadius:4}}>START</span>}
+                  {sg !== null && (
+                    <span style={{fontSize:10,fontFamily:'DM Mono,monospace',color:'var(--muted)',background:'var(--bg)',padding:'2px 6px',borderRadius:4}}>
+                      {catLabels[cat]}
+                    </span>
+                  )}
                 </div>
                 <div style={{display:'flex',alignItems:'center',gap:8}}>
-                  <span style={{fontFamily:'DM Mono,monospace',fontSize:15,color:sg>=0?'var(--green)':'var(--red)',fontWeight:600}}>
-                    {sg>=0?'+':''}{sg}
-                  </span>
-                  {shots.length > 1 && <button className="btn sm danger" style={{padding:'3px 8px'}} onClick={()=>removeShot(i)}>✕</button>}
+                  {sg !== null && (
+                    <span style={{fontFamily:'DM Mono,monospace',fontSize:15,color:sg>=0?'var(--green)':'var(--red)',fontWeight:600}}>
+                      {sg>=0?'+':''}{sg}
+                    </span>
+                  )}
+                  {i > 0 && <button className="btn sm danger" style={{padding:'3px 8px'}} onClick={()=>removePos(i)}>✕</button>}
                 </div>
               </div>
 
-              {/* From */}
-              <div style={{display:'flex',gap:10,alignItems:'flex-start',marginBottom:6}}>
-                <div style={{flex:1}}>
-                  <div className="lbl">From lie</div>
-                  <div className="sel-row">
-                    {LIES.map(l=>(
-                      <button key={l} className={`sel-btn ${shot.lieBefore===l?'on':''}`} onClick={()=>updShot(i,'lieBefore',l)}>{l}</button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <div className="lbl">Dist (yds)</div>
-                  <input className="dist-inp" type="number" min="0" max="700"
-                    value={shot.distBefore||''} placeholder="350"
-                    onChange={e=>updShot(i,'distBefore',Number(e.target.value))} />
-                </div>
+              {/* Player selector */}
+              <div className="lbl">Player</div>
+              <div className="sel-row">
+                {[team.player1, team.player2].map(p=>(
+                  <button key={p} className={`sel-btn ${pos.player===p?'on':''}`}
+                    onClick={()=>updPos(i,'player',p)}
+                    style={{borderRadius:20}}
+                  >{p}</button>
+                ))}
               </div>
 
-              {/* Club */}
-              <div style={{marginBottom:6}}>
-                <div className="lbl">Club</div>
-                <div className="sel-row">
-                  {CLUBS.map(c=>(
-                    <button key={c} className={`sel-btn ${shot.club===c?'on':''}`} onClick={()=>updShot(i,'club',c)}>{c}</button>
-                  ))}
-                </div>
+              {/* Lie selector */}
+              <div className="lbl">Lie</div>
+              <div className="sel-row">
+                {LIES.map(l=>(
+                  <button key={l} className={`sel-btn ${pos.lie===l?'on':''}`}
+                    onClick={()=>updPos(i,'lie',l)}
+                    style={l==='green'?{borderColor:'var(--green)',color:pos.lie==='green'?'#09150A':'var(--green)'}:{}}
+                  >{l}</button>
+                ))}
               </div>
 
-              {/* Result */}
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}>
-                <div style={{flex:1}}>
-                  <div className="lbl">Result lie</div>
-                  <div className="sel-row">
-                    {[...LIES,'hole'].map(l=>(
-                      <button key={l} className={`sel-btn ${shot.lieAfter===l?'on':''}`} onClick={()=>updShot(i,'lieAfter',l)}
-                        style={l==='hole'?{borderColor:'var(--gold)',color:'var(--gold)'}:{}}>{l}</button>
-                    ))}
-                  </div>
+              {/* Distance */}
+              <div style={{display:'flex',alignItems:'center',gap:8,marginTop:4}}>
+                <div className="lbl" style={{marginBottom:0,minWidth:60}}>
+                  {isGreen ? 'Distance (ft)' : 'Distance (yds)'}
                 </div>
-                {shot.lieAfter !== 'hole' && (
-                  <div>
-                    <div className="lbl">Dist (yds)</div>
-                    <input className="dist-inp" type="number" min="0" max="700"
-                      value={shot.distAfter||''} placeholder="15"
-                      onChange={e=>updShot(i,'distAfter',Number(e.target.value))} />
-                  </div>
+                <input className="dist-inp" type="number" min="0" max={isGreen?300:600}
+                  value={pos.dist||''} placeholder={isGreen?'15ft':'120y'}
+                  onChange={e=>updPos(i,'dist',Number(e.target.value))}
+                  style={isGreen?{borderColor:'rgba(82,196,98,.4)',color:'var(--green)'}:{}}
+                />
+                {i===0 && holeYds > 0 && pos.dist !== holeYds && (
+                  <button className="btn sm sec" style={{padding:'3px 8px',fontSize:10}}
+                    onClick={()=>updPos(0,'dist',holeYds)}>
+                    {holeYds}y
+                  </button>
                 )}
               </div>
 
-              {/* SG bar */}
-              <div style={{marginTop:8}}>
-                <div className={`sg-bar ${sg>=0?'sg-pos':'sg-neg'}`} style={{width:`${Math.min(100,Math.abs(sg)*50)}%`}}/>
-              </div>
+              {isGreen && (
+                <div style={{fontSize:10,color:'var(--green)',fontFamily:'DM Mono,monospace',marginTop:3,opacity:.7}}>
+                  Green distances are in feet
+                </div>
+              )}
+
+              {/* Carolina Mulligan — only on OTT or APP shots */}
+              {(()=>{
+                const cat = segCategory(pos, holeIndex, par);
+                if (cat !== 'ott' && cat !== 'app') return null;
+                const taken = pos.mulligan === true;
+                return (
+                  <button
+                    onClick={()=>updPos(i,'mulligan',!taken)}
+                    style={{
+                      marginTop:8,width:'100%',padding:'8px',borderRadius:8,
+                      border:`1px solid ${taken?'#C9A84C':'var(--border2)'}`,
+                      background:taken?'rgba(201,168,76,.12)':'var(--bg)',
+                      color:taken?'var(--gold)':'var(--muted)',
+                      fontFamily:'DM Mono,monospace',fontSize:11,
+                      cursor:'pointer',display:'flex',alignItems:'center',
+                      justifyContent:'center',gap:8,letterSpacing:'.4px',
+                      textTransform:'uppercase',
+                    }}
+                  >
+                    <span style={{fontSize:16}}>🍺</span>
+                    {taken ? 'Carolina Mulligan — Shotgunned ✓' : 'Take a Carolina Mulligan?'}
+                    {taken && <span style={{fontSize:9,color:'var(--muted)',marginLeft:4}}>12 oz</span>}
+                  </button>
+                );
+              })()}
             </div>
           );
         })}
 
-        <button className="btn sec" style={{marginTop:4}} onClick={()=>addShot(shots.length-1)}>
-          + Add Shot
-        </button>
+        {/* Action buttons */}
+        <div style={{display:'flex',gap:8,marginTop:8}}>
+          {!isHoled && (
+            <button className="btn sec" style={{flex:1}} onClick={addPos}>+ Add Position</button>
+          )}
+          {!isHoled && (
+            <button className="btn" style={{flex:1,background:'var(--green)'}} onClick={markHoled}>
+              ⛳ Holed
+            </button>
+          )}
+        </div>
 
-        {/* Hole SG summary */}
-        {shots.length > 0 && (
+        {/* SG Summary */}
+        {sgValues.length > 0 && (
           <div style={{marginTop:14,padding:'10px 12px',background:'var(--surface)',borderRadius:8,border:'1px solid var(--border)'}}>
-            <div className="lbl" style={{marginBottom:6}}>Hole SG Summary</div>
-            <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
-              {Object.entries({ott:'OTT',app:'APP',arg:'ARG',putt:'PUTT'}).map(([k,label])=>{
-                const total = shots
-                  .filter((_,i2) => sgCategory(shots[i2], holeIndex, par) === k)
-                  .reduce((sum,sh) => sum + calcShotSG(sh), 0);
-                const hasAny = shots.some((_,i2) => sgCategory(shots[i2], holeIndex, par) === k);
-                if (!hasAny) return null;
-                return (
-                  <div key={k} style={{textAlign:'center'}}>
-                    <div style={{fontFamily:'DM Mono,monospace',fontSize:10,color:'var(--muted)'}}>{label}</div>
-                    <div style={{fontFamily:'DM Mono,monospace',fontSize:16,color:total>=0?'var(--green)':'var(--red)',fontWeight:600}}>
-                      {total>=0?'+':''}{total.toFixed(2)}
-                    </div>
-                  </div>
-                );
-              })}
-              <div style={{textAlign:'center',marginLeft:'auto'}}>
-                <div style={{fontFamily:'DM Mono,monospace',fontSize:10,color:'var(--muted)'}}>TOTAL</div>
-                <div style={{fontFamily:'DM Mono,monospace',fontSize:16,fontWeight:600,color:shots.reduce((s,sh)=>s+calcShotSG(sh),0)>=0?'var(--green)':'var(--red)'}}>
-                  {(()=>{const t=shots.reduce((s,sh)=>s+calcShotSG(sh),0);return `${t>=0?'+':''}${t.toFixed(2)}`;})()}
-                </div>
-              </div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+              <div className="lbl" style={{marginBottom:0}}>Strokes Gained vs Scratch</div>
+              <span style={{fontFamily:'DM Mono,monospace',fontSize:17,fontWeight:600,
+                color:totalSG>=0?'var(--green)':'var(--red)'}}>
+                {totalSG>=0?'+':''}{totalSG.toFixed(2)}
+              </span>
             </div>
+            {sgValues.map((sg,i) => {
+              const cat = segCategory(positions[i], holeIndex, par);
+              return (
+                <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'3px 0',
+                  borderBottom:'1px solid var(--border)'}}>
+                  <span style={{fontSize:11,color:'var(--muted)'}}>
+                    <span style={{color:'var(--cream)',fontSize:10,fontWeight:600}}>
+                      {positions[i].player || '—'}
+                    </span>
+                    {' '}{catLabels[cat]}
+                    {positions[i].mulligan && <span style={{marginLeft:4,fontSize:11}}>🍺</span>}
+                    <span style={{marginLeft:4,fontSize:10,color:'var(--muted)'}}>
+                      {positions[i].lie} {positions[i].dist}{positions[i].lie==='green'?'ft':'y'}
+                    </span>
+                  </span>
+                  <span style={{fontFamily:'DM Mono,monospace',fontSize:12,
+                    color:sg>=0?'var(--green)':'var(--red)'}}>
+                    {sg>=0?'+':''}{sg}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -898,6 +993,7 @@ function ScoresView({ state, setState }) {
               {/* Header */}
               <div className="sc-grid" style={{paddingBottom:6}}>
                 <div className="hn" style={{color:'var(--gold)'}}>HLE</div>
+                <div className="hn" style={{color:'var(--gold)'}}>YDS</div>
                 <div className="hn" style={{color:'var(--gold)'}}>PAR</div>
                 <div style={{fontSize:10,color:'var(--gold)',fontFamily:'DM Mono,monospace',paddingLeft:4}}>SCORE</div>
                 <div style={{fontSize:10,color:'var(--gold)',fontFamily:'DM Mono,monospace',textAlign:'right'}}>+/-</div>
@@ -907,9 +1003,11 @@ function ScoresView({ state, setState }) {
               {Array.from({length:9},(_,h)=>(
                 <div key={h}>
                   <div className="sc-grid">
-                    <div className="hn" style={{cursor:'pointer'}} onClick={()=>setTrackingHole(h)}>
-                      <span style={{color:(team.shots?.[h]?.length||0)>0?'var(--gold)':'var(--muted)'}}>{h+1}</span>
+                    <div style={{cursor:'pointer',textAlign:'center'}} onClick={()=>setTrackingHole(h)}>
+                      <div style={{fontFamily:'DM Mono,monospace',fontSize:11,color:(team.shots?.[h]?.length||0)>1?'var(--gold)':'var(--muted)'}}>{h+1}</div>
+                      <div style={{fontFamily:'DM Mono,monospace',fontSize:8,color:'var(--border2)',marginTop:-1}}>h{HOLE_HCP[h]}</div>
                     </div>
+                    <div className="hn" style={{fontSize:10}}>{HOLE_YDS[h]}</div>
                     <div className="hn">{par[h]}</div>
                     <input className="hinp" type="number" min="1" max="12"
                       value={team.scores[h]??''} onChange={e=>setScore(h,e.target.value)}
@@ -918,16 +1016,17 @@ function ScoresView({ state, setState }) {
                       {team.scores[h]!==''&&team.scores[h]!==null&&team.scores[h]!==undefined ? fmt(Number(team.scores[h])-par[h]).text : '--'}
                     </div>
                   </div>
-                  {(team.shots?.[h]?.length||0)>0 && (
-                    <div style={{paddingLeft:4,paddingBottom:4,display:'flex',gap:6,flexWrap:'wrap'}}>
-                      {(team.shots[h]||[]).map((sh,si)=>{
-                        const sg=calcShotSG(sh);
-                        return <span key={si} style={{fontSize:10,fontFamily:'DM Mono,monospace',color:sg>=0?'var(--green)':'var(--red)'}}>
-                          S{si+1} {sg>=0?'+':''}{sg}
-                        </span>;
-                      })}
-                    </div>
-                  )}
+                  {(team.shots?.[h]?.length||0)>1 && (()=>{
+                    const sgs=calcPositionsSG(team.shots[h]||[]);
+                    const tot=sgs.reduce((s,v)=>s+v,0);
+                    return(
+                      <div style={{paddingLeft:4,paddingBottom:3}}>
+                        <span style={{fontSize:10,fontFamily:'DM Mono,monospace',color:tot>=0?'var(--green)':'var(--red)'}}>
+                          SG {tot>=0?'+':''}{tot.toFixed(2)}
+                        </span>
+                      </div>
+                    );
+                  })()}
                 </div>
               ))}
 
@@ -948,9 +1047,11 @@ function ScoresView({ state, setState }) {
               {Array.from({length:9},(_,h)=>(
                 <div key={h+9}>
                   <div className="sc-grid">
-                    <div className="hn" style={{cursor:'pointer'}} onClick={()=>setTrackingHole(h+9)}>
-                      <span style={{color:(team.shots?.[h+9]?.length||0)>0?'var(--gold)':'var(--muted)'}}>{h+10}</span>
+                    <div style={{cursor:'pointer',textAlign:'center'}} onClick={()=>setTrackingHole(h+9)}>
+                      <div style={{fontFamily:'DM Mono,monospace',fontSize:11,color:(team.shots?.[h+9]?.length||0)>1?'var(--gold)':'var(--muted)'}}>{h+10}</div>
+                      <div style={{fontFamily:'DM Mono,monospace',fontSize:8,color:'var(--border2)',marginTop:-1}}>h{HOLE_HCP[h+9]}</div>
                     </div>
+                    <div className="hn" style={{fontSize:10}}>{HOLE_YDS[h+9]}</div>
                     <div className="hn">{par[h+9]}</div>
                     <input className="hinp" type="number" min="1" max="12"
                       value={team.scores[h+9]??''} onChange={e=>setScore(h+9,e.target.value)}
@@ -959,16 +1060,17 @@ function ScoresView({ state, setState }) {
                       {team.scores[h+9]!==''&&team.scores[h+9]!==null&&team.scores[h+9]!==undefined ? fmt(Number(team.scores[h+9])-par[h+9]).text : '--'}
                     </div>
                   </div>
-                  {(team.shots?.[h+9]?.length||0)>0 && (
-                    <div style={{paddingLeft:4,paddingBottom:4,display:'flex',gap:6,flexWrap:'wrap'}}>
-                      {(team.shots[h+9]||[]).map((sh,si)=>{
-                        const sg=calcShotSG(sh);
-                        return <span key={si} style={{fontSize:10,fontFamily:'DM Mono,monospace',color:sg>=0?'var(--green)':'var(--red)'}}>
-                          S{si+1} {sg>=0?'+':''}{sg}
-                        </span>;
-                      })}
-                    </div>
-                  )}
+                  {(team.shots?.[h+9]?.length||0)>1 && (()=>{
+                    const sgs=calcPositionsSG(team.shots[h+9]||[]);
+                    const tot=sgs.reduce((s,v)=>s+v,0);
+                    return(
+                      <div style={{paddingLeft:4,paddingBottom:3}}>
+                        <span style={{fontSize:10,fontFamily:'DM Mono,monospace',color:tot>=0?'var(--green)':'var(--red)'}}>
+                          SG {tot>=0?'+':''}{tot.toFixed(2)}
+                        </span>
+                      </div>
+                    );
+                  })()}
                 </div>
               ))}
 
@@ -1167,123 +1269,450 @@ function SkinsView({ state }) {
 }
 
 // ── STATS VIEW ────────────────────────────────────────────────────────────
+// Build a full player-level stats object across ALL teams
+function buildAllPlayerStats(teams, par) {
+  const players = {};
+  teams.forEach(team => {
+    [team.player1, team.player2].forEach(name => {
+      if (!name) return;
+      players[name] = players[name] || {
+        name, team: team.name,
+        sg: { ott:0, app:0, arg:0, putt:0, total:0 },
+        shots:0, holes:0,
+        bestHole: null, worstHole: null,
+        lies: { tee:0, fairway:0, rough:0, bunker:0, fringe:0, green:0 },
+        mulligans: 0, mulliganSGTotal: 0,
+        bestMulligan: null, worstMulligan: null,
+      };
+    });
+    (team.shots||[]).forEach((positions, h) => {
+      if (!positions || positions.length < 2) return;
+      const segs = calcPositionsSG(positions);
+      const holeSG = segs.reduce((s,v)=>s+v,0);
+      positions.slice(0,-1).forEach((pos, i) => {
+        const pName = pos.player;
+        if (!pName || !players[pName]) return;
+        const p = players[pName];
+        const sgVal = segs[i];
+        const cat = segCategory(pos, h, par);
+        p.sg[cat] = parseFloat((p.sg[cat] + sgVal).toFixed(2));
+        p.sg.total = parseFloat((p.sg.total + sgVal).toFixed(2));
+        p.shots++;
+        if (pos.lie && p.lies[pos.lie] !== undefined) p.lies[pos.lie]++;
+        if (pos.mulligan) {
+          p.mulligans++;
+          p.mulliganSGTotal = parseFloat((p.mulliganSGTotal + sgVal).toFixed(2));
+          if (p.bestMulligan  === null || sgVal > p.bestMulligan.sg)  p.bestMulligan  = { hole:h+1, sg: parseFloat(sgVal.toFixed(2)), cat };
+          if (p.worstMulligan === null || sgVal < p.worstMulligan.sg) p.worstMulligan = { hole:h+1, sg: parseFloat(sgVal.toFixed(2)), cat };
+        }
+        // Track best/worst hole contribution
+        if (i === 0) { // first pos = represents the hole
+          p.holes++;
+          if (p.bestHole  === null || holeSG > p.bestHole.sg)  p.bestHole  = { hole:h+1, sg: parseFloat(holeSG.toFixed(2)) };
+          if (p.worstHole === null || holeSG < p.worstHole.sg) p.worstHole = { hole:h+1, sg: parseFloat(holeSG.toFixed(2)) };
+        }
+      });
+    });
+  });
+  return players;
+}
+
+function sgFmtFn(v) { return `${v>=0?'+':''}${v.toFixed(2)}`; }
+function sgColorFn(v) { return v >= 0 ? 'var(--green)' : 'var(--red)'; }
+
 function StatsView({ state }) {
   const { teams, par } = state;
-  const [selTeam, setSelTeam] = useState(teams[0]?.id||null);
-  const team = teams.find(t=>t.id===selTeam);
-  const sg = team ? calcTeamSG(team, par) : null;
+  const [mode, setMode] = useState('field'); // 'field' | team id
+  const team = mode !== 'field' ? teams.find(t=>t.id===mode) : null;
 
-  const totalShots = team ? (team.shots||[]).flat().length : 0;
+  const allPlayers = useMemo(() => buildAllPlayerStats(teams, par), [teams, par]);
+  const playerList = Object.values(allPlayers).filter(p => p.shots > 0);
+  const hasAnyData = playerList.length > 0;
 
-  function sgColor(v) { return v >= 0 ? 'var(--green)' : 'var(--red)'; }
-  function sgFmt(v) { return `${v>=0?'+':''}${v.toFixed(2)}`; }
+  // ── Field / tournament-wide stats ──────────────────────────────────────
+  function FieldView() {
+    if (!hasAnyData) return (
+      <div className="alert">
+        No shot data yet. On the Scores tab, tap any hole number to log shots.
+      </div>
+    );
 
-  // Per-hole SG for sparkline
-  const holesSG = team ? Array.from({length:18},(_,h)=>{
-    const hShots = (team.shots||[])[h] || [];
-    return hShots.reduce((s,sh)=>s+calcShotSG(sh),0);
-  }) : [];
+    const cats = [
+      { key:'total', label:'Total SG',      icon:'⭐' },
+      { key:'ott',   label:'Off the Tee',   icon:'🏌️' },
+      { key:'app',   label:'Approach',      icon:'🎯' },
+      { key:'arg',   label:'Around Green',  icon:'🌀' },
+      { key:'putt',  label:'Putting',       icon:'⛳' },
+    ];
 
-  const catInfo = [
-    {key:'ott',  label:'Off the Tee',       desc:'Tee shots on par 4s & 5s'},
-    {key:'app',  label:'Approach',           desc:'30+ yards, not tee shots'},
-    {key:'arg',  label:'Around the Green',   desc:'Within 30 yards, not putting'},
-    {key:'putt', label:'Putting',            desc:'On the green'},
-  ];
+    // Most shots hit (the grinder)
+    const mostShots = [...playerList].sort((a,b)=>b.shots-a.shots);
+    // Biggest contributor (% of team's shots)
+    const lieLeaders = {};
+    ['rough','bunker'].forEach(lie => {
+      const sorted = [...playerList].sort((a,b)=>b.lies[lie]-a.lies[lie]);
+      if (sorted[0]?.lies[lie] > 0) lieLeaders[lie] = sorted[0];
+    });
+
+    return (<>
+      {/* Category leaders */}
+      {cats.map(({key,label,icon}) => {
+        const sorted = [...playerList].filter(p=>p.sg[key]!==0)
+          .sort((a,b)=>b.sg[key]-a.sg[key]);
+        if (sorted.length === 0) return null;
+        const leader = sorted[0];
+        const worst  = sorted[sorted.length-1];
+        return (
+          <div key={key} className="card" style={{padding:'12px 14px',marginBottom:8}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+              <div style={{display:'flex',alignItems:'center',gap:6}}>
+                <span style={{fontSize:16}}>{icon}</span>
+                <span style={{fontFamily:'DM Mono,monospace',fontSize:11,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.5px'}}>{label}</span>
+              </div>
+            </div>
+            {sorted.map((p,i) => {
+              const val = p.sg[key];
+              const maxAbs = Math.max(...sorted.map(x=>Math.abs(x.sg[key])),0.01);
+              const barW = Math.round(Math.abs(val)/maxAbs*100);
+              return (
+                <div key={p.name} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 0',borderBottom: i<sorted.length-1?'1px solid var(--border)':'none'}}>
+                  <div style={{fontFamily:'Playfair Display,serif',fontSize:16,color:i===0?'var(--gold)':'var(--muted)',width:20,textAlign:'center',flexShrink:0}}>{i+1}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12,fontWeight:600}}>{p.name}</div>
+                    <div style={{fontSize:10,color:'var(--muted)'}}>{p.team}</div>
+                    <div style={{marginTop:3,height:4,borderRadius:2,background:'var(--bg)',overflow:'hidden'}}>
+                      <div style={{height:'100%',width:`${barW}%`,borderRadius:2,background:val>=0?'var(--green)':'var(--red)'}}/>
+                    </div>
+                  </div>
+                  <div style={{fontFamily:'DM Mono,monospace',fontSize:14,fontWeight:600,color:sgColorFn(val),flexShrink:0}}>
+                    {sgFmtFn(val)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+
+      {/* Fun stats */}
+      <div className="card" style={{padding:'12px 14px',marginBottom:8}}>
+        <div className="lbl" style={{marginBottom:8}}>🏅 Fun Stats</div>
+
+        {/* Shot count leaders */}
+        <div style={{marginBottom:12}}>
+          <div style={{fontSize:11,color:'var(--muted)',fontFamily:'DM Mono,monospace',marginBottom:6,textTransform:'uppercase',letterSpacing:'.4px'}}>Most Shots Hit</div>
+          {mostShots.slice(0,5).map((p,i) => (
+            <div key={p.name} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'4px 0',borderBottom:'1px solid var(--border)'}}>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <span style={{fontFamily:'Playfair Display,serif',fontSize:14,color:'var(--gold)',width:16}}>{i+1}</span>
+                <div>
+                  <div style={{fontSize:12,fontWeight:600}}>{p.name}</div>
+                  <div style={{fontSize:10,color:'var(--muted)'}}>{p.team}</div>
+                </div>
+              </div>
+              <span style={{fontFamily:'DM Mono,monospace',fontSize:16,color:'var(--cream)'}}>{p.shots}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Best & worst single hole */}
+        {(()=>{
+          const bests = playerList.filter(p=>p.bestHole).sort((a,b)=>b.bestHole.sg-a.bestHole.sg);
+          const worsts = playerList.filter(p=>p.worstHole).sort((a,b)=>a.worstHole.sg-b.worstHole.sg);
+          if (!bests.length) return null;
+          return (<>
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:11,color:'var(--muted)',fontFamily:'DM Mono,monospace',marginBottom:6,textTransform:'uppercase',letterSpacing:'.4px'}}>🔥 Best Single Hole</div>
+              {bests.slice(0,3).map(p=>(
+                <div key={p.name} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'1px solid var(--border)'}}>
+                  <div>
+                    <span style={{fontSize:12,fontWeight:600}}>{p.name}</span>
+                    <span style={{fontSize:10,color:'var(--muted)',marginLeft:6}}>H{p.bestHole.hole} · {p.team}</span>
+                  </div>
+                  <span style={{fontFamily:'DM Mono,monospace',fontSize:13,color:'var(--green)',fontWeight:600}}>{sgFmtFn(p.bestHole.sg)}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:11,color:'var(--muted)',fontFamily:'DM Mono,monospace',marginBottom:6,textTransform:'uppercase',letterSpacing:'.4px'}}>🥶 Toughest Hole</div>
+              {worsts.slice(0,3).map(p=>(
+                <div key={p.name} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'1px solid var(--border)'}}>
+                  <div>
+                    <span style={{fontSize:12,fontWeight:600}}>{p.name}</span>
+                    <span style={{fontSize:10,color:'var(--muted)',marginLeft:6}}>H{p.worstHole.hole} · {p.team}</span>
+                  </div>
+                  <span style={{fontFamily:'DM Mono,monospace',fontSize:13,color:'var(--red)',fontWeight:600}}>{sgFmtFn(p.worstHole.sg)}</span>
+                </div>
+              ))}
+            </div>
+          </>);
+        })()}
+
+        {/* Carolina Mulligan stats */}
+        {(()=>{
+          const mulliganPlayers = [...playerList]
+            .filter(p => p.mulligans > 0)
+            .sort((a,b) => b.mulligans - a.mulligans);
+          if (!mulliganPlayers.length) return null;
+
+          const totalMulligans = mulliganPlayers.reduce((s,p)=>s+p.mulligans,0);
+          const totalOz = totalMulligans * 12;
+          const sgPerMulligan = mulliganPlayers.map(p=>({
+            ...p, sgPer: p.mulligans > 0 ? parseFloat((p.mulliganSGTotal/p.mulligans).toFixed(2)) : 0
+          })).sort((a,b)=>b.sgPer-a.sgPer);
+
+          const bestMulliganShot = [...playerList]
+            .filter(p=>p.bestMulligan)
+            .sort((a,b)=>b.bestMulligan.sg-a.bestMulligan.sg)[0];
+          const worstMulliganShot = [...playerList]
+            .filter(p=>p.worstMulligan)
+            .sort((a,b)=>a.worstMulligan.sg-b.worstMulligan.sg)[0];
+
+          return (
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:11,color:'var(--gold)',fontFamily:'DM Mono,monospace',marginBottom:8,
+                textTransform:'uppercase',letterSpacing:'.4px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <span>🍺 Carolina Mulligan Board</span>
+                <span style={{color:'var(--muted)',fontSize:10}}>{totalMulligans} taken · {totalOz} oz total</span>
+              </div>
+
+              {/* Mulligan count leaderboard */}
+              <div style={{marginBottom:10}}>
+                <div style={{fontSize:10,color:'var(--muted)',fontFamily:'DM Mono,monospace',marginBottom:5,letterSpacing:'.3px'}}>MOST MULLIGANS</div>
+                {mulliganPlayers.map((p,i)=>(
+                  <div key={p.name} style={{display:'flex',justifyContent:'space-between',alignItems:'center',
+                    padding:'4px 0',borderBottom:'1px solid var(--border)'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <span style={{fontFamily:'Playfair Display,serif',fontSize:14,color:'var(--gold)',width:16}}>{i+1}</span>
+                      <div>
+                        <div style={{fontSize:12,fontWeight:600}}>{p.name}</div>
+                        <div style={{fontSize:10,color:'var(--muted)'}}>{p.team}</div>
+                      </div>
+                    </div>
+                    <div style={{textAlign:'right'}}>
+                      <div style={{fontFamily:'DM Mono,monospace',fontSize:15,color:'var(--gold)'}}>
+                        {'🍺'.repeat(Math.min(p.mulligans,5))}{p.mulligans>5?` x${p.mulligans}`:''}
+                      </div>
+                      <div style={{fontSize:10,color:'var(--muted)',fontFamily:'DM Mono,monospace'}}>{p.mulligans * 12} oz</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* SG per mulligan */}
+              <div style={{marginBottom:10}}>
+                <div style={{fontSize:10,color:'var(--muted)',fontFamily:'DM Mono,monospace',marginBottom:5,letterSpacing:'.3px'}}>SG PER MULLIGAN</div>
+                {sgPerMulligan.map((p,i)=>(
+                  <div key={p.name} style={{display:'flex',justifyContent:'space-between',alignItems:'center',
+                    padding:'4px 0',borderBottom:'1px solid var(--border)'}}>
+                    <div>
+                      <span style={{fontSize:12,fontWeight:600}}>{p.name}</span>
+                      <span style={{fontSize:10,color:'var(--muted)',marginLeft:6}}>{p.team} · {p.mulligans} mulligans</span>
+                    </div>
+                    <span style={{fontFamily:'DM Mono,monospace',fontSize:13,fontWeight:600,color:sgColorFn(p.sgPer)}}>
+                      {sgFmtFn(p.sgPer)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Best & worst single mulligan */}
+              <div style={{display:'flex',gap:8}}>
+                {bestMulliganShot && (
+                  <div style={{flex:1,background:'rgba(82,196,98,.07)',border:'1px solid rgba(82,196,98,.2)',borderRadius:8,padding:'8px 10px'}}>
+                    <div style={{fontSize:9,color:'var(--green)',fontFamily:'DM Mono,monospace',textTransform:'uppercase',letterSpacing:'.4px',marginBottom:4}}>Best 🍺</div>
+                    <div style={{fontSize:12,fontWeight:600}}>{bestMulliganShot.name}</div>
+                    <div style={{fontSize:10,color:'var(--muted)'}}>H{bestMulliganShot.bestMulligan.hole} · {bestMulliganShot.bestMulligan.cat.toUpperCase()}</div>
+                    <div style={{fontFamily:'DM Mono,monospace',fontSize:16,color:'var(--green)',fontWeight:600,marginTop:2}}>
+                      {sgFmtFn(bestMulliganShot.bestMulligan.sg)}
+                    </div>
+                  </div>
+                )}
+                {worstMulliganShot && (
+                  <div style={{flex:1,background:'rgba(224,82,82,.07)',border:'1px solid rgba(224,82,82,.2)',borderRadius:8,padding:'8px 10px'}}>
+                    <div style={{fontSize:9,color:'var(--red)',fontFamily:'DM Mono,monospace',textTransform:'uppercase',letterSpacing:'.4px',marginBottom:4}}>Worst 🍺</div>
+                    <div style={{fontSize:12,fontWeight:600}}>{worstMulliganShot.name}</div>
+                    <div style={{fontSize:10,color:'var(--muted)'}}>H{worstMulliganShot.worstMulligan.hole} · {worstMulliganShot.worstMulligan.cat.toUpperCase()}</div>
+                    <div style={{fontFamily:'DM Mono,monospace',fontSize:16,color:'var(--red)',fontWeight:600,marginTop:2}}>
+                      {sgFmtFn(worstMulliganShot.worstMulligan.sg)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Trouble finders */}
+        {(()=>{
+          const roughHounds = [...playerList].sort((a,b)=>b.lies.rough-a.lies.rough).filter(p=>p.lies.rough>0);
+          const sandmen = [...playerList].sort((a,b)=>b.lies.bunker-a.lies.bunker).filter(p=>p.lies.bunker>0);
+          if (!roughHounds.length && !sandmen.length) return null;
+          return (<>
+            {roughHounds.length > 0 && (
+              <div style={{marginBottom:12}}>
+                <div style={{fontSize:11,color:'var(--muted)',fontFamily:'DM Mono,monospace',marginBottom:6,textTransform:'uppercase',letterSpacing:'.4px'}}>🌿 Rough Rider</div>
+                {roughHounds.slice(0,3).map((p,i)=>(
+                  <div key={p.name} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'1px solid var(--border)'}}>
+                    <div style={{fontSize:12}}>{p.name} <span style={{fontSize:10,color:'var(--muted)'}}>{p.team}</span></div>
+                    <span style={{fontFamily:'DM Mono,monospace',fontSize:13,color:'var(--muted)'}}>{p.lies.rough} times</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {sandmen.length > 0 && (
+              <div>
+                <div style={{fontSize:11,color:'var(--muted)',fontFamily:'DM Mono,monospace',marginBottom:6,textTransform:'uppercase',letterSpacing:'.4px'}}>🏖️ Sand Trap Regular</div>
+                {sandmen.slice(0,3).map((p,i)=>(
+                  <div key={p.name} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'1px solid var(--border)'}}>
+                    <div style={{fontSize:12}}>{p.name} <span style={{fontSize:10,color:'var(--muted)'}}>{p.team}</span></div>
+                    <span style={{fontFamily:'DM Mono,monospace',fontSize:13,color:'var(--muted)'}}>{p.lies.bunker} times</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>);
+        })()}
+      </div>
+    </>);
+  }
+
+  // ── Team detail view ───────────────────────────────────────────────────
+  function TeamDetailView({ team }) {
+    const sg = calcTeamSG(team, par);
+    const totalShots = (team.shots||[]).filter(h=>h&&h.length>=2).reduce((s,h)=>s+(h.length-1),0);
+    const holesSG = Array.from({length:18},(_,h)=>{
+      const positions = (team.shots||[])[h] || [];
+      if (positions.length < 2) return 0;
+      return calcPositionsSG(positions).reduce((s,v)=>s+v,0);
+    });
+    const catInfo = [
+      {key:'ott',label:'Off Tee'},{key:'app',label:'Approach'},
+      {key:'arg',label:'Around Green'},{key:'putt',label:'Putting'},
+    ];
+    const players = [team.player1, team.player2];
+    const playerSG = {};
+    players.forEach(p => { playerSG[p] = { ott:0,app:0,arg:0,putt:0,shots:0,mulligans:0 }; });
+    (team.shots||[]).forEach((positions,h) => {
+      if (!positions||positions.length<2) return;
+      positions.slice(0,-1).forEach((pos,i) => {
+        const pn = pos.player; if (!pn||!playerSG[pn]) return;
+        const sgVal = segmentSG(positions[i],positions[i+1]);
+        const cat = segCategory(pos,h,par);
+        playerSG[pn][cat] = parseFloat((playerSG[pn][cat]+sgVal).toFixed(2));
+        playerSG[pn].shots++;
+        if (pos.mulligan) playerSG[pn].mulligans = (playerSG[pn].mulligans||0) + 1;
+      });
+    });
+
+    if (totalShots === 0) return (
+      <div className="alert">No shot data for this team yet.</div>
+    );
+
+    return (<>
+      {/* Total */}
+      <div className="card" style={{textAlign:'center',padding:'16px 14px',marginBottom:8}}>
+        <div className="lbl">Total SG vs Scratch</div>
+        <div style={{fontFamily:'DM Mono,monospace',fontSize:40,fontWeight:600,color:sgColorFn(sg.total)}}>
+          {sgFmtFn(sg.total)}
+        </div>
+        <div style={{fontSize:11,color:'var(--muted)',marginTop:4}}>
+          {totalShots} shots · {holesSG.filter(v=>v!==0).length} holes tracked
+        </div>
+      </div>
+
+      {/* Category grid */}
+      <div className="sg-grid" style={{marginBottom:8}}>
+        {catInfo.map(({key,label}) => {
+          const val = sg[key];
+          return (
+            <div key={key} className="card" style={{padding:'12px',marginBottom:0}}>
+              <div className="lbl">{label}</div>
+              <div style={{fontFamily:'DM Mono,monospace',fontSize:24,color:sgColorFn(val),fontWeight:600}}>
+                {val!==0?sgFmtFn(val):'--'}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Per-player */}
+      <div className="card" style={{marginBottom:8}}>
+        <div className="lbl" style={{marginBottom:8}}>Player Breakdown</div>
+        {players.map(p => {
+          const d = playerSG[p]; if (!d||d.shots===0) return null;
+          const total = parseFloat((d.ott+d.app+d.arg+d.putt).toFixed(2));
+          return (
+            <div key={p} style={{padding:'10px 0',borderBottom:'1px solid var(--border)'}}>
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                <span style={{fontWeight:600,fontSize:14}}>{p}</span>
+                <div style={{textAlign:'right'}}>
+                  <span style={{fontFamily:'DM Mono,monospace',fontSize:16,fontWeight:600,color:sgColorFn(total)}}>
+                    {sgFmtFn(total)}
+                  </span>
+                  <span style={{fontSize:10,color:'var(--muted)',marginLeft:8,fontFamily:'DM Mono,monospace'}}>{d.shots} shots</span>
+                  {d.mulligans > 0 && <span style={{fontSize:10,color:'var(--gold)',marginLeft:6,fontFamily:'DM Mono,monospace'}}>🍺×{d.mulligans}</span>}
+                </div>
+              </div>
+              <div style={{display:'flex',gap:14,flexWrap:'wrap'}}>
+                {[['OTT',d.ott],['APP',d.app],['ARG',d.arg],['PUTT',d.putt]].map(([lbl,val])=>(
+                  val!==0 && (
+                    <div key={lbl} style={{textAlign:'center'}}>
+                      <div style={{fontFamily:'DM Mono,monospace',fontSize:9,color:'var(--muted)'}}>{lbl}</div>
+                      <div style={{fontFamily:'DM Mono,monospace',fontSize:13,color:sgColorFn(val)}}>{sgFmtFn(val)}</div>
+                    </div>
+                  )
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Hole-by-hole */}
+      <div className="card" style={{padding:'10px 14px'}}>
+        <div className="lbl" style={{marginBottom:6}}>Hole by Hole</div>
+        {holesSG.map((sgVal,h)=>{
+          if ((team.shots?.[h]?.length||0)<2) return null;
+          const width = Math.min(100,Math.abs(sgVal)*40);
+          return (
+            <div key={h} style={{display:'flex',alignItems:'center',gap:8,padding:'4px 0',borderBottom:'1px solid var(--border)'}}>
+              <div style={{fontFamily:'DM Mono,monospace',fontSize:11,color:'var(--muted)',width:22}}>H{h+1}</div>
+              <div style={{flex:1,position:'relative',height:6,background:'var(--bg)',borderRadius:3,overflow:'hidden'}}>
+                <div style={{position:'absolute',height:'100%',width:`${width}%`,borderRadius:3,
+                  background:sgVal>=0?'var(--green)':'var(--red)',
+                  left:sgVal>=0?'50%':`calc(50% - ${width}%)`}}/>
+                <div style={{position:'absolute',top:0,left:'50%',width:1,height:'100%',background:'var(--border2)'}}/>
+              </div>
+              <div style={{fontFamily:'DM Mono,monospace',fontSize:11,color:sgColorFn(sgVal),width:42,textAlign:'right'}}>
+                {sgFmtFn(sgVal)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>);
+  }
 
   return (
     <div className="page">
       <div style={{height:14}}/>
+      {/* Mode tabs: Field + each team */}
       <div className="tabs">
-        {teams.map(t=><button key={t.id} className={`tab ${selTeam===t.id?'on':''}`} onClick={()=>setSelTeam(t.id)}>{t.name}</button>)}
+        <button className={`tab ${mode==='field'?'on':''}`} onClick={()=>setMode('field')}>
+          🏆 Field
+        </button>
+        {teams.map(t=>(
+          <button key={t.id} className={`tab ${mode===t.id?'on':''}`} onClick={()=>setMode(t.id)}>
+            {t.name}
+          </button>
+        ))}
       </div>
-
       <div className="sec" style={{paddingTop:0}}>
-        {!team || totalShots===0 ? (
-          <div className="alert">
-            No shot data yet. On the Scores tab, tap any hole number to log shots and calculate strokes gained.
-          </div>
-        ) : <>
-          {/* Total SG card */}
-          <div className="card" style={{textAlign:'center',padding:'18px 14px',marginBottom:10}}>
-            <div className="lbl">Total Strokes Gained</div>
-            <div style={{fontFamily:'DM Mono,monospace',fontSize:42,fontWeight:600,color:sgColor(sg.total)}}>
-              {sgFmt(sg.total)}
-            </div>
-            <div style={{fontSize:11,color:'var(--muted)',marginTop:4}}>
-              {totalShots} shots tracked · {holesSG.filter(v=>v!==0).length} holes
-            </div>
-          </div>
-
-          {/* Category breakdown */}
-          <div className="sg-grid">
-            {catInfo.map(({key,label,desc})=>{
-              const val = sg[key];
-              const hasData = (team.shots||[]).flat().some(sh => {
-                const holeIdx = (team.shots||[]).findIndex(hs=>(hs||[]).includes(sh));
-                return sgCategory(sh, holeIdx, par) === key;
-              });
-              return (
-                <div key={key} className="card" style={{padding:'12px',marginBottom:0}}>
-                  <div className="lbl">{label}</div>
-                  <div style={{fontFamily:'DM Mono,monospace',fontSize:26,color:sgColor(val),fontWeight:600}}>
-                    {hasData||val!==0 ? sgFmt(val) : '--'}
-                  </div>
-                  <div style={{fontSize:10,color:'var(--muted)',marginTop:2}}>{desc}</div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Hole-by-hole SG */}
-          <div className="card" style={{padding:'10px 14px'}}>
-            <div className="lbl" style={{marginBottom:8}}>Hole by Hole SG</div>
-            {holesSG.map((sgVal, h) => {
-              if ((team.shots?.[h]?.length||0) === 0) return null;
-              const width = Math.min(100, Math.abs(sgVal) * 40);
-              return (
-                <div key={h} style={{display:'flex',alignItems:'center',gap:8,padding:'4px 0',borderBottom:'1px solid var(--border)'}}>
-                  <div style={{fontFamily:'DM Mono,monospace',fontSize:11,color:'var(--muted)',width:20}}>H{h+1}</div>
-                  <div style={{flex:1,position:'relative',height:8,background:'var(--bg)',borderRadius:4,overflow:'hidden'}}>
-                    <div style={{
-                      position:'absolute',
-                      height:'100%',
-                      width:`${width}%`,
-                      borderRadius:4,
-                      background: sgVal>=0 ? 'var(--green)' : 'var(--red)',
-                      left: sgVal >= 0 ? '50%' : `calc(50% - ${width}%)`,
-                    }}/>
-                    <div style={{position:'absolute',top:0,left:'50%',width:1,height:'100%',background:'var(--border2)'}}/>
-                  </div>
-                  <div style={{fontFamily:'DM Mono,monospace',fontSize:11,color:sgColor(sgVal),width:40,textAlign:'right'}}>
-                    {sgFmt(sgVal)}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Club usage */}
-          {(()=>{
-            const clubCounts = {};
-            (team.shots||[]).flat().forEach(sh=>{
-              if(sh.club) clubCounts[sh.club]=(clubCounts[sh.club]||0)+1;
-            });
-            const clubs = Object.entries(clubCounts).sort((a,b)=>b[1]-a[1]);
-            if (!clubs.length) return null;
-            return (
-              <div className="card" style={{padding:'10px 14px'}}>
-                <div className="lbl" style={{marginBottom:8}}>Club Usage</div>
-                {clubs.map(([club,count])=>(
-                  <div key={club} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'1px solid var(--border)'}}>
-                    <span style={{fontSize:13}}>{club}</span>
-                    <span style={{fontFamily:'DM Mono,monospace',fontSize:12,color:'var(--muted)'}}>{count} shot{count!==1?'s':''}</span>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
-        </>}
+        {mode==='field'
+          ? <FieldView />
+          : team ? <TeamDetailView team={team} /> : null
+        }
       </div>
     </div>
   );

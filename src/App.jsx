@@ -301,7 +301,7 @@ function calcTeam(team, proScores, tournament, proHoles = {}) {
   const hcp = teamHandicap(team.hcp1||0, team.hcp2||0);
   const netCombined = combined !== null ? combined - hcp : null;
 
-  return { scrambleToPar, proTotal, combined, netCombined, hcp, n, pVals };
+  return { scrambleToPar, proTotal, combined, netCombined, hcp, n };
 }
 
 function calcSkins(teams, par, skinsAmt) {

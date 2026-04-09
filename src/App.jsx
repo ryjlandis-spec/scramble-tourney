@@ -2170,8 +2170,6 @@ export default function App() {
       const data = await res.json();
       const event = data.events?.[0];
       if (!event) throw new Error('No event');
-      const holes = event.courses?.[0]?.holes;
-      if (holes?.length === 18) setState(p => ({...p, par: holes.map(h => h.shotsToPar)}));
       if (event.name) setState(p => ({...p, tournament:{...p.tournament, pgaEvent: event.name}}));
       const competitors = event.competitions?.[0]?.competitors || [];
       const espnMap = {};

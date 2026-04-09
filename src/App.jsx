@@ -220,10 +220,10 @@ async function loadFromFirestore() {
   } catch(e) { console.warn('Firestore load failed:', e); return null; }
 }
 async function saveToFirestore(s) {
-  try {
-    const [col, docId] = FS_DOC.split('/');
-    await setDoc(doc(db, col, docId), { state: s });
-  } catch(e) { console.warn('Firestore save failed:', e); }
+  // Strip any undefined values Firestore can't handle
+  const clean = JSON.parse(JSON.stringify(s));
+  const [col, docId] = FS_DOC.split('/');
+  await setDoc(doc(db, col, docId), { state: clean, updatedAt: Date.now() });
 }
 
 // ── HELPERS ────────────────────────────────────────────────────────────────
@@ -409,7 +409,7 @@ html,body{background:var(--bg);color:var(--cream);font-family:'Inter',sans-serif
 
 // ── VIEWS ──────────────────────────────────────────────────────────────────
 
-function SetupView({ state, setState, adminMode }) {
+function SetupView({ state, setState, adminMode, setSyncStatus, saveToFirestore }) {
   const { tournament, teams, proScores } = state;
   const [tab, setTab] = useState('tournament');
   const [newTeam, setNewTeam] = useState({ name:'', player1:'', player2:'', hcp1:0, hcp2:0 });
@@ -534,7 +534,23 @@ function SetupView({ state, setState, adminMode }) {
               ))}
             </div>
           )}
-          {!adminMode && <div className="alert">Tap "Admin" in the header to edit settings.</div>}
+          {adminMode && (
+            <button className="btn sec" style={{marginTop:4}} onClick={async ()=>{
+              setSyncStatus('syncing');
+              try {
+                await saveToFirestore(state);
+                setSyncStatus('live');
+                alert('Saved to cloud successfully!');
+              } catch(e) {
+                const msg = e?.code || e?.message || 'unknown error';
+                setSyncStatus('error:' + msg);
+                alert('Save FAILED: ' + msg + '\n\nCheck your Firestore rules in the Firebase console.');
+              }
+            }}>
+              ☁️ Force Save to Cloud
+            </button>
+          )}
+          {!adminMode && <div className="alert">Tap "🔒 Admin" in the header to edit settings.</div>}
         </div>
       )}
 
@@ -1842,14 +1858,16 @@ export default function App() {
             {' '}
             <span style={{
               fontSize:9, fontFamily:'DM Mono,monospace',
-              color: syncStatus==='live'    ? 'var(--green)'
-                   : syncStatus==='offline'  ? 'var(--red)'
-                   : syncStatus==='syncing'  ? 'var(--gold)'
+              color: syncStatus==='live'             ? 'var(--green)'
+                   : syncStatus==='offline'           ? 'var(--red)'
+                   : syncStatus.startsWith('error:')  ? 'var(--red)'
+                   : syncStatus==='syncing'            ? 'var(--gold)'
                    : 'var(--muted)'
             }}>
-              {syncStatus==='live'    ? '● live'
-               : syncStatus==='offline' ? '● offline'
-               : syncStatus==='syncing' ? '● saving'
+              {syncStatus==='live'              ? '● live'
+               : syncStatus==='offline'          ? '● offline'
+               : syncStatus==='syncing'          ? '● saving'
+               : syncStatus.startsWith('error:') ? '⚠ ' + syncStatus.replace('error:','')
                : '● connecting'}
             </span>
           </p>
@@ -1860,7 +1878,7 @@ export default function App() {
       </div>
 
       {/* Views */}
-      {view==='setup'       && <SetupView      state={state} setState={setState} adminMode={adminMode} />}
+      {view==='setup'       && <SetupView      state={state} setState={setState} adminMode={adminMode} setSyncStatus={setSyncStatus} saveToFirestore={saveToFirestore} />}
       {view==='draft'       && <DraftView      state={state} setState={setState} />}
       {view==='scores'      && <ScoresView     state={state} setState={setState} />}
       {view==='leaderboard' && <LeaderboardView state={state} />}

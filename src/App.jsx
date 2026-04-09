@@ -1784,12 +1784,9 @@ export default function App() {
   // lastFirestoreState: JSON string of the last state we received FROM Firestore.
   // We compare current state to this before saving — if they match, the change
   // came from Firestore and we skip the save to prevent echo loops.
-  const lastFirestoreState = useRef(null);
-
-  // stateRef: always mirrors `state` so the onSnapshot closure (which runs
-  // with empty deps and therefore captures a stale `state`) can read current
-  // state without going stale itself.
-  const stateRef = useRef(state);
+  // Initialized to INIT so a React Strict Mode double-mount never writes the
+  // empty initial state back to Firestore on first render.
+  const lastFirestoreState = useRef(JSON.stringify(INIT));
 
   // userEditedAt: timestamp of last local edit. We refuse Firestore updates
   // for 5 seconds after a local edit so typing doesn't get wiped mid-keystroke.
@@ -1799,7 +1796,9 @@ export default function App() {
   const mounted   = useRef(false);
   const saveTimer = useRef(null);
 
-  // Keep stateRef in sync on every render
+  // stateRef: always holds the current state so the onSnapshot closure (which
+  // runs once with [] deps) can do fresh comparisons without going stale.
+  const stateRef = useRef(state);
   useEffect(() => { stateRef.current = state; }, [state]);
 
   // Inject CSS once
@@ -1816,11 +1815,12 @@ export default function App() {
     const unsub = onSnapshot(
       doc(db, col, docId),
       (snap) => {
-        // Don't overwrite an error status that was set by a failed write —
-        // only advance to 'live' if we aren't currently showing an error.
-        // This prevents a snapshot arrival from silently masking a write failure.
-        setSyncStatus(prev => prev.startsWith('error:') ? prev : 'live');
-
+        // Only advance to 'live' from initial/offline states — never overwrite a
+        // write error. A failed setDoc sets 'error:...' and we must not mask it
+        // just because the listener fires again (e.g. from another client's write).
+        setSyncStatus(prev =>
+          prev === 'connecting' || prev === 'offline' ? 'live' : prev
+        );
         if (!snap.exists()) return;
         const remote = snap.data().state;
         if (!remote) return;
@@ -1831,8 +1831,7 @@ export default function App() {
         const merged = { ...remote, par: DEFAULT_PAR };
         const mergedStr = JSON.stringify(merged);
 
-        // Use stateRef (not the stale closure `state`) so this comparison
-        // always checks against the *current* state, not the initial render value.
+        // Use stateRef (not stale closure `state`) so this comparison is always fresh
         const currentStr = JSON.stringify(stateRef.current);
         if (mergedStr === currentStr) return;
 
@@ -1840,6 +1839,8 @@ export default function App() {
         lastFirestoreState.current = mergedStr;
         setState(merged);
         saveLocal(merged);
+        // Firestore round-trip confirmed — mark as live
+        setSyncStatus('live');
       },
       (err) => {
         console.warn('Firestore error:', err);

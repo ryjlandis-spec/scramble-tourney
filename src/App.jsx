@@ -1163,7 +1163,7 @@ function ShotModal({ team, holeIndex, par, onClose, onSave }) {
         {/* Action buttons */}
         <div style={{display:'flex',gap:8,marginTop:8}}>
           {!isTerminal && (
-            <button className="btn sec" style={{flex:1}} onClick={addPos}>+ Add Position</button>
+            <button className="btn sec" style={{flex:1}} onClick={addPos}>+ Add Shot</button>
           )}
           {!isTerminal && (
             <button className="btn sec" style={{flex:1,borderColor:'var(--muted)',color:'var(--muted)'}} onClick={markGimme}>

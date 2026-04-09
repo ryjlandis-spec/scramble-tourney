@@ -1336,7 +1336,7 @@ function ScoresView({ state, setState }) {
                       style={{
                         cursor:'pointer',textAlign:'center',borderRadius:6,padding:'3px 2px',
                         background:(team.shots?.[h]?.length||0)>1?'rgba(201,168,76,.12)':'var(--surface2)',
-                        border:teamHcp>0&&HOLE_HCP[h]<=teamHcp?'1px solid rgba(201,168,76,.35)':'1px solid var(--border2)',
+                        border:teamHcp>0&&HOLE_HCP[h]<=teamHcp?'1px solid rgba(201,168,76,.75)':'1px solid var(--border2)',
                       }}>
                       <div style={{fontFamily:'DM Mono,monospace',fontSize:11,color:(team.shots?.[h]?.length||0)>1?'var(--gold)':'var(--cream)'}}>{h+1}</div>
                       <div style={{fontFamily:'DM Mono,monospace',fontSize:8,color:'var(--muted)',marginTop:-1}}>h{HOLE_HCP[h]}</div>
@@ -1386,7 +1386,7 @@ function ScoresView({ state, setState }) {
                       style={{
                         cursor:'pointer',textAlign:'center',borderRadius:6,padding:'3px 2px',
                         background:(team.shots?.[h+9]?.length||0)>1?'rgba(201,168,76,.12)':'var(--surface2)',
-                        border:teamHcp>0&&HOLE_HCP[h+9]<=teamHcp?'1px solid rgba(201,168,76,.35)':'1px solid var(--border2)',
+                        border:teamHcp>0&&HOLE_HCP[h+9]<=teamHcp?'1px solid rgba(201,168,76,.75)':'1px solid var(--border2)',
                       }}>
                       <div style={{fontFamily:'DM Mono,monospace',fontSize:11,color:(team.shots?.[h+9]?.length||0)>1?'var(--gold)':'var(--cream)'}}>{h+10}</div>
                       <div style={{fontFamily:'DM Mono,monospace',fontSize:8,color:'var(--muted)',marginTop:-1}}>h{HOLE_HCP[h+9]}</div>

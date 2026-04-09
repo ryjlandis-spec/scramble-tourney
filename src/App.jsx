@@ -230,8 +230,11 @@ function saveLocal(s) {
 // keyed by hole index ("0"…"17") before writing, and back to an array on read.
 
 function toFirestore(state) {
+  // proHoles is ESPN-derived and local-only — never write to Firestore.
+  // Every client recomputes it from the ESPN auto-sync.
+  const { proHoles: _omit, ...rest } = state;
   return {
-    ...state,
+    ...rest,
     teams: (state.teams || []).map(t => ({
       ...t,
       shots: Object.fromEntries(
@@ -2163,6 +2166,12 @@ export default function App() {
   const [syncing, setSyncing]     = useState(false);
   const [syncMsg, setSyncMsg]     = useState('');
 
+  // isEspnUpdate: true while a syncESPN setState is in flight.
+  // The save effect checks this and skips the Firestore write — ESPN data is
+  // local-only (proHoles never goes to Firestore, proScores from ESPN shouldn't
+  // trigger a cascade that flashes everyone's data every 60 seconds).
+  const isEspnUpdate = useRef(false);
+
   async function syncESPN() {
     setSyncing(true); setSyncMsg('Fetching ESPN…');
     try {
@@ -2194,6 +2203,7 @@ export default function App() {
           matched++;
         }
       });
+      isEspnUpdate.current = true;
       setState(p => ({...p, proScores:{...p.proScores, ...newScores}, proHoles:{...(p.proHoles||{}), ...newHoles}}));
       setSyncMsg(`✓ Auto-synced ${matched} pros · ${new Date().toLocaleTimeString()}`);
     } catch(e) { setSyncMsg('✗ Sync failed'); }
@@ -2294,7 +2304,18 @@ export default function App() {
 
     saveLocal(state);
 
-    const stateStr = JSON.stringify(state);
+    // If this state change came from the ESPN auto-sync, skip writing to Firestore.
+    // ESPN data (proScores, proHoles) is recomputed locally by every client.
+    // Writing it would trigger onSnapshot on all clients every 60 seconds, causing a data flash.
+    if (isEspnUpdate.current) {
+      isEspnUpdate.current = false;
+      return;
+    }
+
+    // Exclude proHoles from comparison — it's local-only and never in Firestore.
+    // Without this, proHoles would always make the state look different from lastFirestoreState.
+    const { proHoles: _ph, ...stateWithoutHoles } = state;
+    const stateStr = JSON.stringify(stateWithoutHoles);
 
     // If this state matches the last thing we got from Firestore, it IS the
     // Firestore data — don't save it back or we'll create an infinite loop

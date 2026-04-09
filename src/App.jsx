@@ -334,7 +334,7 @@ const CSS = `
   --green:#52C462;--red:#E05252;--border:#223322;--border2:#2E432E;
 }
 html,body{background:var(--bg);color:var(--cream);font-family:'Inter',sans-serif;overflow-x:hidden;}
-.app{max-width:480px;margin:0 auto;min-height:100vh;padding-bottom:68px;}
+.app{max-width:480px;margin:0 auto;min-height:100vh;padding-bottom:68px;overflow-x:hidden;}
 /* Header */
 .hdr{padding:14px 16px 10px;background:var(--bg);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;}
 .hdr-left h1{font-family:'Playfair Display',serif;font-size:19px;color:var(--gold);letter-spacing:.3px;}
@@ -386,10 +386,10 @@ html,body{background:var(--bg);color:var(--cream);font-family:'Inter',sans-serif
 .lb-big.dim{color:var(--muted);}
 .lb-detail{font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;margin-top:2px;}
 /* Scorecard */
-.sc-grid{display:grid;grid-template-columns:30px 36px 20px 1fr 42px;gap:5px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);}
+.sc-grid{display:grid;grid-template-columns:36px 38px 24px 1fr 36px;gap:4px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);}
 .sc-grid:last-child{border-bottom:none;}
 .hn{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);text-align:center;}
-.hinp{width:100%;height:38px;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;color:var(--cream);font-family:'DM Mono',monospace;font-size:16px;text-align:center;outline:none;appearance:textfield;}
+.hinp{width:100%;max-width:100%;height:38px;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;color:var(--cream);font-family:'DM Mono',monospace;font-size:16px;text-align:center;outline:none;appearance:textfield;}
 .hinp:focus{border-color:var(--gold);}
 .hinp::-webkit-inner-spin-button,.hinp::-webkit-outer-spin-button{-webkit-appearance:none;}
 /* Draft */
@@ -739,11 +739,31 @@ function SetupView({ state, setState, adminMode, setSyncStatus }) {
   );
 }
 
+// Distinct colors for up to 10 teams — works on the dark background
+const TEAM_COLORS = [
+  '#52C462','#4A9EE0','#E05252','#E8C96B','#A855F7',
+  '#F97316','#EC4899','#14B8A6','#84CC16','#F59E0B',
+];
+
 function ProsView({ state }) {
   const { teams, proScores, tournament } = state;
+  const [tab, setTab] = useState('teams');
   const [open, setOpen] = useState(null);
   const proCount = tournament?.proCount || 1;
 
+  // Assign a stable color to each team by index
+  const teamColorMap = Object.fromEntries(teams.map((t, i) => [t.id, TEAM_COLORS[i % TEAM_COLORS.length]]));
+
+  // Build a map: proId → [{teamId, teamName, color}]
+  const proOwnership = {};
+  teams.forEach(t => {
+    (t.proIds||[]).forEach(pid => {
+      if (!proOwnership[pid]) proOwnership[pid] = [];
+      proOwnership[pid].push({ teamId: t.id, teamName: t.name, color: teamColorMap[t.id] });
+    });
+  });
+
+  // ── Teams tab ──────────────────────────────────────────────────────────────
   const ranked = [...teams]
     .map(t => {
       const sorted = [...(t.proIds||[])].sort((a,b) => (proScores[a]??0) - (proScores[b]??0));
@@ -760,74 +780,143 @@ function ProsView({ state }) {
       return a.proTotal - b.proTotal;
     });
 
+  // ── Field tab ──────────────────────────────────────────────────────────────
+  // Sort all pros by score, assign positions with ties
+  const fieldRows = [...PROS]
+    .map(pro => ({ pro, score: proScores[pro.id] ?? 0, owners: proOwnership[pro.id] || [] }))
+    .sort((a, b) => a.score - b.score);
+
+  // Compute display positions (T2, T2, 4…)
+  let pos = 1;
+  const fieldWithPos = fieldRows.map((row, i) => {
+    if (i > 0 && row.score !== fieldRows[i-1].score) pos = i + 1;
+    const tied = fieldRows.filter(r => r.score === row.score).length > 1;
+    return { ...row, pos: tied ? `T${pos}` : String(pos) };
+  });
+
+  // Color legend for teams that have drafted anyone
+  const teamsWithPros = teams.filter(t => (t.proIds||[]).length > 0);
+
   return (
     <div className="page">
-      <div className="sec">
-        <div className="sh">Pro Watch</div>
-        <div className="alert" style={{fontSize:11,marginBottom:10}}>
-          Best {proCount} pro{proCount>1?'s':''} per team count toward combined score · tap a team to expand
-        </div>
+      <div style={{height:14}}/>
+      <div className="tabs">
+        <button className={`tab ${tab==='teams'?'on':''}`} onClick={()=>setTab('teams')}>My Teams</button>
+        <button className={`tab ${tab==='field'?'on':''}`} onClick={()=>setTab('field')}>Masters Field</button>
+      </div>
 
-        {ranked.length === 0
-          ? <div className="alert">No teams drafted yet. Go to Setup to add teams.</div>
-          : <div className="card" style={{padding:'0 14px'}}>
-              {ranked.map(({team, sorted, proTotal}, i) => {
-                const {text, cls} = fmt(proTotal);
-                const isOpen = open === team.id;
-                return (
-                  <div key={team.id}>
-                    <div className="lb-row" onClick={()=>setOpen(isOpen ? null : team.id)}>
-                      <div className={`lb-rank ${i===0?'g':''}`}>{i+1}</div>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div className="lb-name">{team.name}</div>
-                        <div className="lb-players">{team.player1} & {team.player2}</div>
-                      </div>
-                      <div className="lb-right">
-                        <div className={`lb-big ${cls}`}>{text}</div>
-                        <div className="lb-detail">
-                          {sorted.length}/6 drafted · best {proCount}
+      {/* ── TEAMS TAB ── */}
+      {tab === 'teams' && (
+        <div className="sec" style={{paddingTop:0}}>
+          <div className="alert" style={{fontSize:11,marginBottom:10}}>
+            Best {proCount} pro{proCount>1?'s':''} per team count toward combined score · tap to expand
+          </div>
+          {ranked.length === 0
+            ? <div className="alert">No teams drafted yet. Go to Setup to add teams.</div>
+            : <div className="card" style={{padding:'0 14px'}}>
+                {ranked.map(({team, sorted, proTotal}, i) => {
+                  const {text, cls} = fmt(proTotal);
+                  const isOpen = open === team.id;
+                  const color = teamColorMap[team.id];
+                  return (
+                    <div key={team.id}>
+                      <div className="lb-row" onClick={()=>setOpen(isOpen ? null : team.id)}
+                        style={{borderLeft:`3px solid ${color}`,paddingLeft:10,marginLeft:-14}}>
+                        <div className={`lb-rank ${i===0?'g':''}`}>{i+1}</div>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div className="lb-name">{team.name}</div>
+                          <div className="lb-players">{team.player1} & {team.player2}</div>
+                        </div>
+                        <div className="lb-right">
+                          <div className={`lb-big ${cls}`}>{text}</div>
+                          <div className="lb-detail">{sorted.length}/6 drafted · best {proCount}</div>
                         </div>
                       </div>
+                      {isOpen && (
+                        <div style={{padding:'4px 0 12px 36px',borderBottom:'1px solid var(--border)'}}>
+                          {sorted.length === 0
+                            ? <div style={{fontSize:12,color:'var(--muted)'}}>No pros drafted yet.</div>
+                            : <>
+                                {sorted.map((id, idx) => {
+                                  const pro = PROS_MAP[id];
+                                  const s = proScores[id] ?? 0;
+                                  const {text:pt, cls:pc} = fmt(s);
+                                  const inTop = idx < proCount;
+                                  return (
+                                    <div key={id} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 0',borderBottom:'1px solid var(--border)',opacity:inTop?1:0.45}}>
+                                      <span style={{fontSize:11,color:'var(--gold)',width:14,flexShrink:0}}>{inTop?'★':''}</span>
+                                      <span style={{fontSize:13,flex:1}}>{pro?.name}</span>
+                                      <span className={`sc ${pc}`} style={{fontSize:12}}>{pt}</span>
+                                    </div>
+                                  );
+                                })}
+                                <div style={{fontSize:10,color:'var(--muted)',marginTop:6}}>★ = counting toward combined score</div>
+                              </>
+                          }
+                        </div>
+                      )}
                     </div>
+                  );
+                })}
+              </div>
+          }
+        </div>
+      )}
 
-                    {isOpen && (
-                      <div style={{padding:'4px 0 12px 36px',borderBottom:'1px solid var(--border)'}}>
-                        {sorted.length === 0
-                          ? <div style={{fontSize:12,color:'var(--muted)'}}>No pros drafted yet.</div>
-                          : <>
-                              {sorted.map((id, idx) => {
-                                const pro = PROS_MAP[id];
-                                const s = proScores[id] ?? 0;
-                                const {text:pt, cls:pc} = fmt(s);
-                                const inTop = idx < proCount;
-                                return (
-                                  <div key={id} style={{
-                                    display:'flex',alignItems:'center',gap:8,
-                                    padding:'5px 0',
-                                    borderBottom:'1px solid var(--border)',
-                                    opacity:inTop?1:0.45,
-                                  }}>
-                                    <span style={{fontSize:11,color:'var(--gold)',width:14,flexShrink:0}}>
-                                      {inTop?'★':''}
-                                    </span>
-                                    <span style={{fontSize:13,flex:1}}>{pro?.name}</span>
-                                    <span className={`sc ${pc}`} style={{fontSize:12}}>{pt}</span>
-                                  </div>
-                                );
-                              })}
-                              <div style={{fontSize:10,color:'var(--muted)',marginTop:6}}>
-                                ★ = counting toward combined score
-                              </div>
-                            </>
-                        }
+      {/* ── FIELD TAB ── */}
+      {tab === 'field' && (
+        <div className="sec" style={{paddingTop:0}}>
+          {/* Team color legend */}
+          {teamsWithPros.length > 0 && (
+            <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:10}}>
+              {teamsWithPros.map(t => (
+                <div key={t.id} style={{display:'flex',alignItems:'center',gap:5,padding:'3px 8px',borderRadius:20,border:`1px solid ${teamColorMap[t.id]}22`,background:`${teamColorMap[t.id]}18`}}>
+                  <span style={{width:8,height:8,borderRadius:'50%',background:teamColorMap[t.id],flexShrink:0,display:'inline-block'}}/>
+                  <span style={{fontSize:10,fontFamily:'DM Mono,monospace',color:teamColorMap[t.id]}}>{t.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="card" style={{padding:'4px 12px'}}>
+            {fieldWithPos.map(({pro, score, owners, pos}) => {
+              const {text, cls} = fmt(score);
+              const isDrafted = owners.length > 0;
+              return (
+                <div key={pro.id} style={{
+                  display:'flex',alignItems:'center',gap:8,
+                  padding:'8px 0',
+                  borderBottom:'1px solid var(--border)',
+                  opacity: isDrafted ? 1 : 0.35,
+                }}>
+                  {/* Position */}
+                  <div style={{fontFamily:'DM Mono,monospace',fontSize:11,color:'var(--muted)',width:26,flexShrink:0,textAlign:'right'}}>{pos}</div>
+                  {/* Colored left bar if drafted */}
+                  <div style={{width:3,alignSelf:'stretch',borderRadius:2,flexShrink:0,background:owners.length===1?owners[0].color:owners.length>1?'var(--gold)':'transparent'}}/>
+                  {/* Name */}
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:isDrafted?600:400,color:isDrafted?'var(--cream)':'var(--muted)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                      {pro.name}
+                    </div>
+                    {/* Team badges */}
+                    {owners.length > 0 && (
+                      <div style={{display:'flex',flexWrap:'wrap',gap:3,marginTop:2}}>
+                        {owners.map(o => (
+                          <span key={o.teamId} style={{fontSize:9,fontFamily:'DM Mono,monospace',color:o.color,background:`${o.color}18`,border:`1px solid ${o.color}44`,borderRadius:10,padding:'1px 6px'}}>
+                            {o.teamName}
+                          </span>
+                        ))}
                       </div>
                     )}
                   </div>
-                );
-              })}
-            </div>
-        }
-      </div>
+                  {/* Score */}
+                  <span className={`sc ${cls}`} style={{fontSize:12,flexShrink:0}}>{text}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

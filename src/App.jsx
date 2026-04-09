@@ -1462,6 +1462,7 @@ function ScoresView({ state, setState }) {
 
 function LeaderboardView({ state }) {
   const { teams, proScores, tournament } = state;
+  const proCount = tournament?.proCount || 1;
   const [open, setOpen] = useState(null);
   const [showNet, setShowNet] = useState(false);
 

@@ -68,6 +68,7 @@ const COURSE_SLOPE   = 100;
 const STORAGE_KEY    = 'scramble_golf_v9';   // local cache key
 const FS_DOC         = 'tournament/state';    // Firestore path
 const ESPN_API = 'https://site.web.api.espn.com/apis/site/v2/sports/golf/leaderboard?league=pga';
+const ADMIN_PASSWORD = 'Eagle47';
 
 // Normalize a name for fuzzy matching (last name + first initial)
 function normalizeName(n) {
@@ -439,6 +440,8 @@ function SetupView({ state, setState, adminMode, setSyncStatus }) {
   const [proSearch, setProSearch] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
+  const [expandedTeam, setExpandedTeam] = useState(null);
+  const [teamProSearch, setTeamProSearch] = useState('');
 
   const setT = (f,v) => setState(p => ({...p, tournament:{...p.tournament,[f]:v}}));
 
@@ -478,6 +481,16 @@ function SetupView({ state, setState, adminMode, setSyncStatus }) {
   }
 
   function removeTeam(id) { setState(p => ({...p, teams:p.teams.filter(t=>t.id!==id)})); }
+
+  function toggleTeamPro(teamId, proId) {
+    setState(p => ({...p, teams: p.teams.map(t => {
+      if (t.id !== teamId) return t;
+      const has = (t.proIds||[]).includes(proId);
+      if (has) return {...t, proIds: t.proIds.filter(id=>id!==proId)};
+      if ((t.proIds||[]).length >= 6) return t;
+      return {...t, proIds: [...(t.proIds||[]), proId]};
+    })}));
+  }
 
   function setProScore(id, val) {
     setState(p => ({...p, proScores:{...p.proScores,[id]: val===''? 0 : Number(val)}}));
@@ -601,19 +614,85 @@ function SetupView({ state, setState, adminMode, setSyncStatus }) {
           {teams.length === 0
             ? <div className="alert">No teams yet. Enable Admin to add teams.</div>
             : (
-              <div className="card">
-                {teams.map((t,i) => (
-                  <div key={t.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 0',borderBottom:i<teams.length-1?'1px solid var(--border)':'none'}}>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontWeight:600,fontSize:14}}>{t.name}</div>
-                      <div style={{fontSize:11,color:'var(--muted)',marginTop:1}}>{t.player1} & {t.player2}</div>
-                      <div style={{fontSize:10,color:'var(--muted)',fontFamily:'DM Mono,monospace',marginTop:2}}>
-                      {(t.proIds?.length||0) + "/6 pros · HCP: " + teamHandicap(t.hcp1||0,t.hcp2||0)}
+              <div className="card" style={{padding:0}}>
+                {teams.map((t,i) => {
+                  const isExpanded = expandedTeam === t.id;
+                  const filteredForTeam = PROS.filter(p => p.name.toLowerCase().includes(teamProSearch.toLowerCase()));
+                  return (
+                    <div key={t.id} style={{borderBottom:i<teams.length-1?'1px solid var(--border)':'none'}}>
+                      {/* Team row */}
+                      <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',cursor:adminMode?'pointer':'default'}}
+                        onClick={()=>adminMode&&setExpandedTeam(isExpanded?null:t.id)}>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontWeight:600,fontSize:14}}>{t.name}</div>
+                          <div style={{fontSize:11,color:'var(--muted)',marginTop:1}}>{t.player1} & {t.player2}</div>
+                          <div style={{fontSize:10,color:'var(--muted)',fontFamily:'DM Mono,monospace',marginTop:2}}>
+                            {(t.proIds?.length||0)}/6 pros · HCP: {teamHandicap(t.hcp1||0,t.hcp2||0)}
+                          </div>
+                        </div>
+                        {adminMode && (
+                          <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+                            <span style={{fontSize:11,color:'var(--muted)',fontFamily:'DM Mono,monospace'}}>
+                              {isExpanded ? '▲' : '▼'}
+                            </span>
+                            <button className="btn sm danger" onClick={e=>{e.stopPropagation();removeTeam(t.id);}}>✕</button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Inline pro picker — only in admin + expanded */}
+                      {adminMode && isExpanded && (
+                        <div style={{padding:'0 14px 14px'}}>
+                          {/* Current picks */}
+                          {(t.proIds?.length||0) > 0 && (
+                            <div style={{marginBottom:10}}>
+                              <div className="lbl">Current Picks ({t.proIds.length}/6)</div>
+                              <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                                {[...(t.proIds||[])].sort((a,b)=>(proScores[a]??0)-(proScores[b]??0)).map(id=>{
+                                  const pro=PROS_MAP[id];
+                                  const {text,cls}=fmt(proScores[id]??0);
+                                  return (
+                                    <button key={id} className="pro-chip sel"
+                                      onClick={()=>toggleTeamPro(t.id,id)}>
+                                      {pro?.name}
+                                      <span className={`sc ${cls}`} style={{fontSize:10,padding:'1px 5px'}}>{text}</span>
+                                      <span style={{fontSize:10,color:'var(--red)',marginLeft:2}}>✕</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Pro search + pool */}
+                          <div className="lbl">Add Pros {t.proIds?.length>=6 && <span style={{color:'var(--red)'}}>— full (6/6)</span>}</div>
+                          <input
+                            className="inp"
+                            placeholder="Search pros…"
+                            value={teamProSearch}
+                            onChange={e=>setTeamProSearch(e.target.value)}
+                            style={{marginBottom:8}}
+                          />
+                          <div style={{display:'flex',flexWrap:'wrap',gap:0,margin:'-3px'}}>
+                            {filteredForTeam.map(pro => {
+                              const sel = (t.proIds||[]).includes(pro.id);
+                              const full = (t.proIds?.length||0) >= 6 && !sel;
+                              const {text,cls} = fmt(proScores[pro.id]??0);
+                              return (
+                                <button key={pro.id}
+                                  className={`pro-chip ${sel?'sel':''} ${full?'full':''}`}
+                                  onClick={()=>!full&&toggleTeamPro(t.id,pro.id)}>
+                                  {pro.name}
+                                  <span className={`sc ${cls}`} style={{fontSize:10,padding:'1px 5px'}}>{text}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    </div>
-                    {adminMode && <button className="btn sm danger" onClick={()=>removeTeam(t.id)}>✕</button>}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
         </div>
@@ -1877,6 +1956,9 @@ export default function App() {
   const [view, setView]           = useState('leaderboard');
   const [adminMode, setAdminMode] = useState(false);
   const [syncStatus, setSyncStatus] = useState('connecting');
+  const [showAdminPrompt, setShowAdminPrompt] = useState(false);
+  const [pwInput, setPwInput]     = useState('');
+  const [pwError, setPwError]     = useState(false);
 
   // lastFirestoreState: JSON string of the last state we received FROM Firestore.
   // We compare current state to this before saving — if they match, the change
@@ -2011,6 +2093,39 @@ export default function App() {
 
   return (
     <div className="app">
+      {/* Admin password prompt */}
+      {showAdminPrompt && (
+        <div className="modal-bg" onClick={()=>{setShowAdminPrompt(false);setPwInput('');setPwError(false);}}>
+          <div className="modal" onClick={e=>e.stopPropagation()} style={{paddingBottom:36}}>
+            <div className="modal-hdr">
+              <div style={{fontFamily:'Playfair Display,serif',fontSize:17,color:'var(--gold)'}}>Admin Access</div>
+              <button className="btn sm sec" onClick={()=>{setShowAdminPrompt(false);setPwInput('');setPwError(false);}}>✕</button>
+            </div>
+            <label className="lbl">Password</label>
+            <input
+              className="inp"
+              type="password"
+              placeholder="Enter admin password"
+              value={pwInput}
+              autoFocus
+              onChange={e=>{setPwInput(e.target.value);setPwError(false);}}
+              onKeyDown={e=>{
+                if(e.key==='Enter'){
+                  if(pwInput===ADMIN_PASSWORD){setAdminMode(true);setShowAdminPrompt(false);setPwInput('');setPwError(false);}
+                  else setPwError(true);
+                }
+              }}
+              style={pwError?{borderColor:'var(--red)'}:{}}
+            />
+            {pwError && <div style={{fontSize:11,color:'var(--red)',marginTop:-4,marginBottom:8,fontFamily:'DM Mono,monospace'}}>Incorrect password</div>}
+            <button className="btn" onClick={()=>{
+              if(pwInput===ADMIN_PASSWORD){setAdminMode(true);setShowAdminPrompt(false);setPwInput('');setPwError(false);}
+              else setPwError(true);
+            }}>Unlock</button>
+          </div>
+        </div>
+      )}
+
       <div className="hdr">
         <div className="hdr-left">
           <h1>{tournament.name || 'Golf Tournament'}</h1>
@@ -2023,7 +2138,10 @@ export default function App() {
             </span>
           </p>
         </div>
-        <button className="btn sm sec" style={{ width: 'auto' }} onClick={() => setAdminMode(a => !a)}>
+        <button className="btn sm sec" style={{ width: 'auto' }} onClick={() => {
+          if(adminMode) setAdminMode(false);
+          else { setPwInput(''); setPwError(false); setShowAdminPrompt(true); }
+        }}>
           {adminMode ? '🔓 Admin' : '🔒 Admin'}
         </button>
       </div>

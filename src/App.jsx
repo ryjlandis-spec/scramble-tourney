@@ -934,6 +934,8 @@ function ShotModal({ team, holeIndex, par, onClose, onSave }) {
   const scoreNum = (existingScore !== '' && existingScore !== null && existingScore !== undefined)
     ? Number(existingScore) : null;
 
+  // When pre-populating from a score, we don't know if it was holed or gimme,
+  // so default to holed (the more common case). Score S → S+1 positions ending in holed.
   const defaultPos = (scoreNum !== null && scoreNum >= 1)
     ? [
         { lie:'tee', dist: holeYds, player: team.player1 },
@@ -1244,7 +1246,9 @@ function ScoresView({ state, setState }) {
   function saveShots(holeIndex, shots) {
     const lastLie = shots[shots.length-1]?.lie;
     const isTerminal = lastLie === 'holed' || lastLie === 'gimme';
-    const calcScore = isTerminal ? String(shots.length - 1) : null;
+    // holed marker doesn't count as a stroke (positions.length - 1)
+    // gimme counts as a conceded stroke (positions.length)
+    const calcScore = isTerminal ? String(lastLie === 'gimme' ? shots.length : shots.length - 1) : null;
     setState(p=>({...p,teams:p.teams.map(t=>{
       if(t.id!==team.id)return t;
       const sh=[...(t.shots||Array(18).fill(null).map(()=>[]))];

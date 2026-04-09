@@ -94,6 +94,7 @@ const INIT = {
   tournament: { name:'Saturday Scramble', pgaEvent:'', date:'', skinsPerHole:20, buyIn:100, proCount:1 },
   teams: [],
   proScores: {}, // proId → number (to par, e.g. -5)
+  proHoles: {}, // proId → number (holes played today, 0–18)
   par: DEFAULT_PAR,
 };
 
@@ -334,13 +335,13 @@ const CSS = `
   --green:#52C462;--red:#E05252;--border:#223322;--border2:#2E432E;
 }
 html,body{background:var(--bg);color:var(--cream);font-family:'Inter',sans-serif;overflow-x:hidden;}
-.app{max-width:480px;margin:0 auto;min-height:100vh;padding-bottom:68px;overflow-x:hidden;}
+.app{max-width:480px;margin:0 auto;min-height:100vh;padding-bottom:calc(68px + env(safe-area-inset-bottom));overflow-x:hidden;}
 /* Header */
 .hdr{padding:14px 16px 10px;background:var(--bg);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;}
 .hdr-left h1{font-family:'Playfair Display',serif;font-size:19px;color:var(--gold);letter-spacing:.3px;}
 .hdr-left p{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);margin-top:2px;}
 /* Bottom nav */
-.bnav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:var(--surface);border-top:1px solid var(--border);display:flex;z-index:30;}
+.bnav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:var(--surface);border-top:1px solid var(--border);display:flex;z-index:100;padding-bottom:env(safe-area-inset-bottom);}
 .nb{flex:1;padding:9px 2px 8px;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.5px;text-transform:uppercase;transition:color .2s;}
 .nb.on{color:var(--gold);}
 .nb .ico{font-size:19px;}
@@ -715,9 +716,10 @@ const TEAM_COLORS = [
 ];
 
 function ProsView({ state }) {
-  const { teams, proScores, tournament } = state;
+  const { teams, proScores, proHoles = {}, tournament } = state;
   const [tab, setTab] = useState('teams');
   const [open, setOpen] = useState(null);
+  const [fieldTeamFilter, setFieldTeamFilter] = useState(null); // null = show all
   const proCount = tournament?.proCount || 1;
 
   // Assign a stable color to each team by index
@@ -835,54 +837,82 @@ function ProsView({ state }) {
       {/* ── FIELD TAB ── */}
       {tab === 'field' && (
         <div className="sec" style={{paddingTop:0}}>
-          {/* Team color legend */}
+          {/* Team filter chips */}
           {teamsWithPros.length > 0 && (
             <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:10}}>
-              {teamsWithPros.map(t => (
-                <div key={t.id} style={{display:'flex',alignItems:'center',gap:5,padding:'3px 8px',borderRadius:20,border:`1px solid ${teamColorMap[t.id]}22`,background:`${teamColorMap[t.id]}18`}}>
-                  <span style={{width:8,height:8,borderRadius:'50%',background:teamColorMap[t.id],flexShrink:0,display:'inline-block'}}/>
-                  <span style={{fontSize:10,fontFamily:'DM Mono,monospace',color:teamColorMap[t.id]}}>{t.name}</span>
-                </div>
-              ))}
+              <button
+                onClick={()=>setFieldTeamFilter(null)}
+                style={{
+                  display:'flex',alignItems:'center',gap:5,padding:'4px 10px',borderRadius:20,cursor:'pointer',
+                  border:`1px solid ${fieldTeamFilter===null?'var(--cream)':'var(--border2)'}`,
+                  background:fieldTeamFilter===null?'rgba(237,227,208,.15)':'none',
+                  color:fieldTeamFilter===null?'var(--cream)':'var(--muted)',
+                  fontFamily:'DM Mono,monospace',fontSize:10,
+                }}
+              >All</button>
+              {teamsWithPros.map(t => {
+                const active = fieldTeamFilter === t.id;
+                const color = teamColorMap[t.id];
+                return (
+                  <button key={t.id}
+                    onClick={()=>setFieldTeamFilter(active ? null : t.id)}
+                    style={{
+                      display:'flex',alignItems:'center',gap:5,padding:'4px 10px',borderRadius:20,cursor:'pointer',
+                      border:`1px solid ${active?color:color+'44'}`,
+                      background:active?`${color}25`:`${color}10`,
+                      color:active?color:`${color}99`,
+                      fontFamily:'DM Mono,monospace',fontSize:10,
+                    }}
+                  >
+                    <span style={{width:7,height:7,borderRadius:'50%',background:color,display:'inline-block',flexShrink:0}}/>
+                    {t.name}
+                  </button>
+                );
+              })}
             </div>
           )}
 
           <div className="card" style={{padding:'4px 12px'}}>
-            {fieldWithPos.map(({pro, score, owners, pos}) => {
-              const {text, cls} = fmt(score);
-              const isDrafted = owners.length > 0;
-              return (
-                <div key={pro.id} style={{
-                  display:'flex',alignItems:'center',gap:8,
-                  padding:'8px 0',
-                  borderBottom:'1px solid var(--border)',
-                  opacity: isDrafted ? 1 : 0.35,
-                }}>
-                  {/* Position */}
-                  <div style={{fontFamily:'DM Mono,monospace',fontSize:11,color:'var(--muted)',width:26,flexShrink:0,textAlign:'right'}}>{pos}</div>
-                  {/* Colored left bar if drafted */}
-                  <div style={{width:3,alignSelf:'stretch',borderRadius:2,flexShrink:0,background:owners.length===1?owners[0].color:owners.length>1?'var(--gold)':'transparent'}}/>
-                  {/* Name */}
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:13,fontWeight:isDrafted?600:400,color:isDrafted?'var(--cream)':'var(--muted)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
-                      {pro.name}
-                    </div>
-                    {/* Team badges */}
-                    {owners.length > 0 && (
-                      <div style={{display:'flex',flexWrap:'wrap',gap:3,marginTop:2}}>
-                        {owners.map(o => (
-                          <span key={o.teamId} style={{fontSize:9,fontFamily:'DM Mono,monospace',color:o.color,background:`${o.color}18`,border:`1px solid ${o.color}44`,borderRadius:10,padding:'1px 6px'}}>
-                            {o.teamName}
-                          </span>
-                        ))}
+            {fieldWithPos
+              .filter(({owners}) => fieldTeamFilter === null || owners.some(o => o.teamId === fieldTeamFilter))
+              .map(({pro, score, owners, pos}) => {
+                const {text, cls} = fmt(score);
+                const isDrafted = owners.length > 0;
+                const holes = proHoles[pro.id];
+                const holesText = holes !== undefined && holes !== null ? String(holes) : '--';
+                return (
+                  <div key={pro.id} style={{
+                    display:'flex',alignItems:'center',gap:8,
+                    padding:'8px 0',
+                    borderBottom:'1px solid var(--border)',
+                    opacity: fieldTeamFilter === null ? (isDrafted ? 1 : 0.35) : 1,
+                  }}>
+                    {/* Position */}
+                    <div style={{fontFamily:'DM Mono,monospace',fontSize:11,color:'var(--muted)',width:26,flexShrink:0,textAlign:'right'}}>{pos}</div>
+                    {/* Colored left bar */}
+                    <div style={{width:3,alignSelf:'stretch',borderRadius:2,flexShrink:0,background:owners.length===1?owners[0].color:owners.length>1?'var(--gold)':'transparent'}}/>
+                    {/* Name + team badges */}
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:isDrafted?600:400,color:isDrafted?'var(--cream)':'var(--muted)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                        {pro.name}
                       </div>
-                    )}
+                      {owners.length > 0 && (
+                        <div style={{display:'flex',flexWrap:'wrap',gap:3,marginTop:2}}>
+                          {owners.map(o => (
+                            <span key={o.teamId} style={{fontSize:9,fontFamily:'DM Mono,monospace',color:o.color,background:`${o.color}18`,border:`1px solid ${o.color}44`,borderRadius:10,padding:'1px 6px'}}>
+                              {o.teamName}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {/* Holes played */}
+                    <div style={{fontFamily:'DM Mono,monospace',fontSize:11,color:'var(--muted)',flexShrink:0,textAlign:'right',width:24}}>{holesText}</div>
+                    {/* Score */}
+                    <span className={`sc ${cls}`} style={{fontSize:12,flexShrink:0}}>{text}</span>
                   </div>
-                  {/* Score */}
-                  <span className={`sc ${cls}`} style={{fontSize:12,flexShrink:0}}>{text}</span>
-                </div>
-              );
-            })}
+                );
+              })}
           </div>
         </div>
       )}
@@ -2108,15 +2138,21 @@ export default function App() {
       competitors.forEach(c => {
         const name = c.athlete?.displayName;
         const s = c.statistics?.find(x => x.name === 'scoreToPar');
-        if (name) espnMap[name] = s?.value ?? 0;
+        const h = c.statistics?.find(x => x.name === 'holesPlayed');
+        if (name) espnMap[name] = { score: s?.value ?? 0, holes: h?.value ?? null };
       });
       let matched = 0;
       const newScores = {};
+      const newHoles = {};
       PROS.forEach(pro => {
         const found = Object.entries(espnMap).find(([n]) => namesMatch(n, pro.name));
-        if (found) { newScores[pro.id] = found[1]; matched++; }
+        if (found) {
+          newScores[pro.id] = found[1].score;
+          if (found[1].holes !== null) newHoles[pro.id] = found[1].holes;
+          matched++;
+        }
       });
-      setState(p => ({...p, proScores:{...p.proScores, ...newScores}}));
+      setState(p => ({...p, proScores:{...p.proScores, ...newScores}, proHoles:{...(p.proHoles||{}), ...newHoles}}));
       setSyncMsg(`✓ Auto-synced ${matched} pros · ${new Date().toLocaleTimeString()}`);
     } catch(e) { setSyncMsg('✗ Sync failed'); }
     setSyncing(false);

@@ -622,6 +622,9 @@ function SetupView({ state, setState, adminMode }) {
 function DraftView({ state, setState }) {
   const { teams, proScores } = state;
   const [selTeam, setSelTeam] = useState(teams[0]?.id || null);
+  useEffect(() => {
+    if (!selTeam && teams.length > 0) setSelTeam(teams[0].id);
+  }, [teams]);
   const team = teams.find(t=>t.id===selTeam);
 
   // Pros already drafted by OTHER teams
@@ -957,6 +960,9 @@ function ScoresView({ state, setState }) {
   const { teams, par } = state;
   const [selTeam, setSelTeam] = useState(teams[0]?.id||null);
   const [trackingHole, setTrackingHole] = useState(null);
+  useEffect(() => {
+    if (!selTeam && teams.length > 0) setSelTeam(teams[0].id);
+  }, [teams]);
   const team = teams.find(t=>t.id===selTeam);
 
   function setScore(h, val) {
@@ -1363,6 +1369,7 @@ function sgColorFn(v) { return v >= 0 ? 'var(--green)' : 'var(--red)'; }
 function StatsView({ state }) {
   const { teams, par } = state;
   const [mode, setMode] = useState('field'); // 'field' | team id
+  // No auto-select needed — field view works without a selected team
   const team = mode !== 'field' ? teams.find(t=>t.id===mode) : null;
 
   const allPlayers = useMemo(() => buildAllPlayerStats(teams, par), [teams, par]);
@@ -1835,11 +1842,15 @@ export default function App() {
             {' '}
             <span style={{
               fontSize:9, fontFamily:'DM Mono,monospace',
-              color: syncStatus==='live' ? 'var(--green)'
-                   : syncStatus==='offline' ? 'var(--red)'
+              color: syncStatus==='live'    ? 'var(--green)'
+                   : syncStatus==='offline'  ? 'var(--red)'
+                   : syncStatus==='syncing'  ? 'var(--gold)'
                    : 'var(--muted)'
             }}>
-              {syncStatus==='live' ? '● live' : syncStatus==='offline' ? '● offline' : '● syncing'}
+              {syncStatus==='live'    ? '● live'
+               : syncStatus==='offline' ? '● offline'
+               : syncStatus==='syncing' ? '● saving'
+               : '● connecting'}
             </span>
           </p>
         </div>

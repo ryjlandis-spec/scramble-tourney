@@ -2166,12 +2166,6 @@ export default function App() {
   const [syncing, setSyncing]     = useState(false);
   const [syncMsg, setSyncMsg]     = useState('');
 
-  // isEspnUpdate: true while a syncESPN setState is in flight.
-  // The save effect checks this and skips the Firestore write — ESPN data is
-  // local-only (proHoles never goes to Firestore, proScores from ESPN shouldn't
-  // trigger a cascade that flashes everyone's data every 60 seconds).
-  const isEspnUpdate = useRef(false);
-
   async function syncESPN() {
     setSyncing(true); setSyncMsg('Fetching ESPN…');
     try {
@@ -2179,7 +2173,6 @@ export default function App() {
       const data = await res.json();
       const event = data.events?.[0];
       if (!event) throw new Error('No event');
-      if (event.name) setState(p => ({...p, tournament:{...p.tournament, pgaEvent: event.name}}));
       const competitors = event.competitions?.[0]?.competitors || [];
       const espnMap = {};
       competitors.forEach(c => {
@@ -2189,8 +2182,10 @@ export default function App() {
           x.name === 'holesPlayed' || x.name === 'thru' || x.name === 'holes'
         );
         // status.thru is the most reliable source — it's what ESPN shows on screen
+        // displayThru is a pre-formatted string ("1", "F") as fallback
         const holes = hStat?.value ?? c.status?.thru ?? null;
-        if (name) espnMap[name] = { score: s?.value ?? 0, holes };
+        const holesDisplay = holes !== null ? holes : (c.status?.displayThru && c.status.displayThru !== '-' ? c.status.displayThru : null);
+        if (name) espnMap[name] = { score: s?.value ?? 0, holes: holesDisplay };
       });
       let matched = 0;
       const newScores = {};
@@ -2203,7 +2198,6 @@ export default function App() {
           matched++;
         }
       });
-      isEspnUpdate.current = true;
       setState(p => ({...p, proScores:{...p.proScores, ...newScores}, proHoles:{...(p.proHoles||{}), ...newHoles}}));
       setSyncMsg(`✓ Auto-synced ${matched} pros · ${new Date().toLocaleTimeString()}`);
     } catch(e) { setSyncMsg('✗ Sync failed'); }
@@ -2218,22 +2212,29 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // lastFirestoreState stores state WITHOUT proHoles (proHoles is local-only and
-  // never in Firestore). The save effect also excludes proHoles from its comparison,
-  // so both sides must be consistent or they'll never match and cause infinite write loops.
-  const { proHoles: _initPh, ...initWithoutHoles } = INIT;
-  const lastFirestoreState = useRef(JSON.stringify(initWithoutHoles));
+  // ── ESPN-field stripping helper ──────────────────────────────────────
+  // proScores and proHoles are ESPN-derived. We NEVER use them to decide
+  // whether to write to Firestore — that would cause a cascade every 60 seconds
+  // and temporarily wipe everyone's data. Only user-edited fields (teams,
+  // tournament, scores, shots) should trigger Firestore saves.
+  function espnStrip(s) {
+    if (!s) return s;
+    const { proScores: _s, proHoles: _h, ...rest } = s;
+    return rest;
+  }
 
-  // userEditedAt: timestamp of last local edit. We refuse Firestore updates
-  // for 5 seconds after a local edit so typing doesn't get wiped mid-keystroke.
+  // lastFirestoreState: tracks what Firestore has (ESPN fields excluded for consistency).
+  const lastFirestoreState = useRef(JSON.stringify(espnStrip(INIT)));
+
+  // userEditedAt: 30-second guard — Firestore snapshots won't overwrite local state
+  // for 30 seconds after any user edit (gives the Firestore write time to land).
   const userEditedAt = useRef(0);
 
   // mounted: skip the very first effect run (initial render — no need to save)
   const mounted   = useRef(false);
   const saveTimer = useRef(null);
 
-  // stateRef: always holds the current state so the onSnapshot closure (which
-  // runs once with [] deps) can do fresh comparisons without going stale.
+  // stateRef: always-current state for the onSnapshot closure (no stale closures)
   const stateRef = useRef(state);
   useEffect(() => { stateRef.current = state; }, [state]);
 
@@ -2251,9 +2252,6 @@ export default function App() {
     const unsub = onSnapshot(
       doc(db, col, docId),
       (snap) => {
-        // Only advance to 'live' from initial/offline states — never overwrite a
-        // write error. A failed setDoc sets 'error:...' and we must not mask it
-        // just because the listener fires again (e.g. from another client's write).
         setSyncStatus(prev =>
           prev === 'connecting' || prev === 'offline' ? 'live' : prev
         );
@@ -2261,30 +2259,27 @@ export default function App() {
         const remote = fromFirestore(snap.data().state);
         if (!remote) return;
 
-        // Don't overwrite local state while user is actively editing
-        if (Date.now() - userEditedAt.current < 5000) return;
+        // Don't overwrite local state while user is actively editing.
+        // 30-second window gives the save plenty of time to reach Firestore.
+        if (Date.now() - userEditedAt.current < 30000) return;
 
-        // Merge: Firestore wins for everything except proHoles, which is ESPN-derived
-        // and may be absent from older Firestore documents.
         const merged = {
           ...remote,
           par: DEFAULT_PAR,
-          proHoles: { ...(stateRef.current.proHoles || {}), ...(remote.proHoles || {}) },
+          // proScores: Firestore wins (admin edits), ESPN will overlay on next sync
+          proScores: remote.proScores || stateRef.current.proScores || {},
+          // proHoles: always local — ESPN-only, never in Firestore
+          proHoles: stateRef.current.proHoles || {},
         };
-        const mergedStr = JSON.stringify(merged);
 
-        // Compare without proHoles on both sides (proHoles is local-only)
-        const { proHoles: _mPh, ...mergedWithoutHoles } = merged;
-        const { proHoles: _cPh, ...currentWithoutHoles } = stateRef.current;
-        if (JSON.stringify(mergedWithoutHoles) === JSON.stringify(currentWithoutHoles)) return;
+        // Compare without ESPN fields — they must never be the reason for a write
+        const mergedStripped   = JSON.stringify(espnStrip(merged));
+        const currentStripped  = JSON.stringify(espnStrip(stateRef.current));
+        if (mergedStripped === currentStripped) return;
 
-        // Accept the Firestore data — record it (without proHoles) so save effect
-        // comparison is consistent: both sides exclude proHoles.
-        const { proHoles: _fsPh, ...mergedWithoutHoles } = merged;
-        lastFirestoreState.current = JSON.stringify(mergedWithoutHoles);
+        lastFirestoreState.current = mergedStripped;
         setState(merged);
         saveLocal(merged);
-        // Firestore round-trip confirmed — mark as live
         setSyncStatus('live');
       },
       (err) => {
@@ -2298,42 +2293,27 @@ export default function App() {
 
   // ── Save local changes to Firestore ────────────────────────────────
   useEffect(() => {
-    // Skip the initial render — nothing new to save on first mount
-    if (!mounted.current) {
-      mounted.current = true;
-      return;
-    }
+    if (!mounted.current) { mounted.current = true; return; }
 
     saveLocal(state);
 
-    // If this state change came from the ESPN auto-sync, skip writing to Firestore.
-    // ESPN data (proScores, proHoles) is recomputed locally by every client.
-    // Writing it would trigger onSnapshot on all clients every 60 seconds, causing a data flash.
-    if (isEspnUpdate.current) {
-      isEspnUpdate.current = false;
-      return;
-    }
-
-    // Exclude proHoles from comparison — it's local-only and never in Firestore.
-    // Without this, proHoles would always make the state look different from lastFirestoreState.
-    const { proHoles: _ph, ...stateWithoutHoles } = state;
-    const stateStr = JSON.stringify(stateWithoutHoles);
-
-    // If this state matches the last thing we got from Firestore, it IS the
-    // Firestore data — don't save it back or we'll create an infinite loop
+    // Use ESPN-stripped state ONLY for change detection — proScores/proHoles changes
+    // (from ESPN sync) must never be the reason we write to Firestore.
+    const stateStr = JSON.stringify(espnStrip(state));
     if (stateStr === lastFirestoreState.current) return;
 
-    // This is a real local change — record when it happened
+    // Genuine user edit — record when it happened and queue a save
     userEditedAt.current = Date.now();
 
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       setSyncStatus('syncing');
       try {
-        const clean = toFirestore(JSON.parse(stateStr));
+        // Write full state (including proScores for admin edits) — but strip proHoles
+        // since it's local-only and recomputed from ESPN on every client.
+        const clean = toFirestore(state);
         const [col, docId] = FS_DOC.split('/');
         await setDoc(doc(db, col, docId), { state: clean, updatedAt: Date.now() });
-        // Record that this state is now what Firestore has
         lastFirestoreState.current = stateStr;
         setSyncStatus('live');
       } catch (e) {

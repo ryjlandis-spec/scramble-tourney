@@ -386,7 +386,7 @@ html,body{background:var(--bg);color:var(--cream);font-family:'Inter',sans-serif
 .lb-big.dim{color:var(--muted);}
 .lb-detail{font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;margin-top:2px;}
 /* Scorecard */
-.sc-grid{display:grid;grid-template-columns:36px 38px 24px minmax(0,1fr) 36px;gap:4px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);}
+.sc-grid{display:grid;grid-template-columns:36px 38px 24px 44px 36px;gap:4px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);}
 .sc-grid:last-child{border-bottom:none;}
 .hn{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);text-align:center;}
 .hinp{width:100%;min-width:0;height:38px;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;color:var(--cream);font-family:'DM Mono',monospace;font-size:16px;text-align:center;outline:none;appearance:textfield;}

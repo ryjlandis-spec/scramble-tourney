@@ -1,4 +1,8 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { db } from "./firebase";
+import {
+  doc, getDoc, setDoc, onSnapshot
+} from "firebase/firestore";
 
 // ── CONSTANTS ──────────────────────────────────────────────────────────────
 const PROS = [
@@ -60,7 +64,8 @@ const HOLE_HCP       = [3,15,17,1,13,7,11,5,9, 16,2,14,12,8,10,4,6,18];
 const HOLE_YDS       = [356,150,262,156,158,397,150,168,301, 143,333,97,154,260,129,321,149,118];
 const COURSE_RATING  = 59.6;
 const COURSE_SLOPE   = 100;
-const STORAGE_KEY    = 'scramble_golf_v6';
+const STORAGE_KEY    = 'scramble_golf_v6';   // local cache key
+const FS_DOC         = 'tournament/state';    // Firestore path
 const ESPN_API = 'https://site.web.api.espn.com/apis/site/v2/sports/golf/leaderboard?league=pga';
 
 // Normalize a name for fuzzy matching (last name + first initial)
@@ -84,7 +89,7 @@ function namesMatch(espnName, ourName) {
 }
 
 const INIT = {
-  tournament: { name:'Saturday Scramble', pgaEvent:'', date:'', skinsPerHole:20, buyIn:100 },
+  tournament: { name:'Saturday Scramble', pgaEvent:'', date:'', skinsPerHole:20, buyIn:100, proCount:1 },
   teams: [],
   proScores: {}, // proId → number (to par, e.g. -5)
   par: DEFAULT_PAR,
@@ -198,12 +203,26 @@ function calcTeamSG(team, par) {
 const LIES = ['tee','fairway','rough','bunker','fringe','green'];
 
 // ── STORAGE ────────────────────────────────────────────────────────────────
-function load() {
+// localStorage = instant local cache; Firestore = shared source of truth
+function loadLocal() {
   try { const r = localStorage.getItem(STORAGE_KEY); return r ? JSON.parse(r) : null; }
   catch { return null; }
 }
-function save(s) {
+function saveLocal(s) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch {}
+}
+async function loadFromFirestore() {
+  try {
+    const [col, docId] = FS_DOC.split('/');
+    const snap = await getDoc(doc(db, col, docId));
+    return snap.exists() ? snap.data().state : null;
+  } catch(e) { console.warn('Firestore load failed:', e); return null; }
+}
+async function saveToFirestore(s) {
+  try {
+    const [col, docId] = FS_DOC.split('/');
+    await setDoc(doc(db, col, docId), { state: s });
+  } catch(e) { console.warn('Firestore save failed:', e); }
 }
 
 // ── HELPERS ────────────────────────────────────────────────────────────────
@@ -214,18 +233,19 @@ function fmt(n) {
   return { text:`+${n}`, cls:'over' };
 }
 
-function calcTeam(team, proScores) {
+function calcTeam(team, proScores, tournament) {
   const entered = team.scores.filter(s => s !== '' && s !== null && s !== undefined);
   const n = entered.length;
   const scrambleStrokes = entered.reduce((s,v) => s + Number(v), 0);
   const scramblePar = DEFAULT_PAR.slice(0, n).reduce((a,b) => a+b, 0);
   const scrambleToPar = n > 0 ? scrambleStrokes - scramblePar : null;
 
+  const proCount = tournament?.proCount || 1;
   const pVals = (team.proIds || [])
     .map(id => proScores[id] !== undefined ? proScores[id] : 0)
     .sort((a,b) => a - b)
-    .slice(0, 3);
-  const proTotal = pVals.length === 3 ? pVals.reduce((a,b)=>a+b,0) : null;
+    .slice(0, proCount);
+  const proTotal = pVals.length === proCount ? pVals.reduce((a,b)=>a+b,0) : null;
 
   const combined = scrambleToPar !== null && proTotal !== null
     ? scrambleToPar + proTotal : scrambleToPar;
@@ -473,6 +493,24 @@ function SetupView({ state, setState, adminMode }) {
                   <input className="inp" type="number" value={tournament.buyIn} onChange={e=>setT('buyIn',Number(e.target.value))} />
                 </div>
               </div>
+              <label className="lbl">Pro Scores Used (Best N of 6)</label>
+              <div style={{display:'flex',gap:8,marginBottom:8}}>
+                {[1,2,3].map(n=>(
+                  <button key={n}
+                    className={`btn sm ${(tournament.proCount||1)===n?'':'sec'}`}
+                    style={{flex:1}}
+                    onClick={()=>setT('proCount',n)}>
+                    Best {n}
+                  </button>
+                ))}
+              </div>
+              <div style={{fontSize:11,color:'var(--muted)',marginBottom:4,lineHeight:1.5}}>
+                {(tournament.proCount||1)===1
+                  ? '✓ Recommended — scramble decides the winner, pros add a bonus'
+                  : (tournament.proCount||1)===2
+                  ? 'Moderate — draft quality matters more, less chance of blowout'
+                  : 'Original — 3 pros carry significant weight'}
+              </div>
             </div>
           ) : (
             <div className="card">
@@ -484,6 +522,7 @@ function SetupView({ state, setState, adminMode }) {
                 ['Skins', `$${tournament.skinsPerHole}/hole`],
                 ['Overall Buy-In', `$${tournament.buyIn}/team`],
                 ['Overall Pot', `$${teams.length * tournament.buyIn}`],
+                ['Pro Scoring', `Best ${tournament.proCount||1} of 6 pros`],
                 ['Course Rating', `${COURSE_RATING} / Slope ${COURSE_SLOPE}`],
                 ['Par', `${DEFAULT_PAR.reduce((a,b)=>a+b,0)}`],
               ].map(([k,v]) => v && (
@@ -1144,7 +1183,7 @@ function LeaderboardView({ state }) {
                       <div className={`lb-big ${cls}`}>{text}</div>
                       <div className="lb-detail">
                         {n>0?`Scr: ${fmt(scrambleToPar).text}`:'No scores'}
-                        {proTotal!==null?` · Pros: ${fmt(proTotal).text}`:''}
+                        {proTotal!==null?` · Best ${tournament?.proCount||1}: ${fmt(proTotal).text}`:''}
                         {hcp>0?` · HCP -${hcp}`:''}
                       </div>
                     </div>
@@ -1167,7 +1206,7 @@ function LeaderboardView({ state }) {
                           );
                         })
                       }
-                      <div style={{marginTop:8,fontSize:11,color:'var(--muted)'}}>★ counted in combined score</div>
+                      <div style={{marginTop:8,fontSize:11,color:'var(--muted)'}}>★ top {proCount} counted in combined score</div>
                     </div>
                   )}
                 </div>
@@ -1720,18 +1759,56 @@ function StatsView({ state }) {
 
 // ── MAIN APP ───────────────────────────────────────────────────────────────
 export default function App() {
-  const [state, setState] = useState(()=>load()||INIT);
+  const [state, setState] = useState(()=>loadLocal()||INIT);
   const [view, setView] = useState('leaderboard');
   const [adminMode, setAdminMode] = useState(false);
+  const [syncStatus, setSyncStatus] = useState('loading'); // 'loading'|'live'|'offline'
+  const isSaving = useRef(false);
+  const pendingSave = useRef(null);
 
-  useEffect(()=>{ save(state); },[state]);
-
+  // ── Inject CSS once ──────────────────────────────────────────────────
   useEffect(()=>{
     const el=document.createElement('style');
     el.textContent=CSS;
     document.head.appendChild(el);
     return ()=>document.head.removeChild(el);
   },[]);
+
+  // ── Real-time Firestore listener ─────────────────────────────────────
+  useEffect(()=>{
+    const [col, docId] = FS_DOC.split('/');
+    const unsub = onSnapshot(
+      doc(db, col, docId),
+      (snap) => {
+        if (snap.exists()) {
+          const remote = snap.data().state;
+          // Only update if we're not mid-save (prevents echo)
+          if (!isSaving.current) {
+            setState(remote);
+            saveLocal(remote);
+          }
+        }
+        setSyncStatus('live');
+      },
+      (err) => {
+        console.warn('Firestore listener error:', err);
+        setSyncStatus('offline');
+      }
+    );
+    return () => unsub();
+  }, []);
+
+  // ── Debounced Firestore save on every state change ───────────────────
+  useEffect(()=>{
+    saveLocal(state);
+    // Debounce: wait 800ms after last change before writing to Firestore
+    if (pendingSave.current) clearTimeout(pendingSave.current);
+    pendingSave.current = setTimeout(async () => {
+      isSaving.current = true;
+      await saveToFirestore(state);
+      setTimeout(() => { isSaving.current = false; }, 500);
+    }, 800);
+  }, [state]);
 
   const {tournament} = state;
 
@@ -1751,8 +1828,17 @@ export default function App() {
         <div className="hdr-left">
           <h1>{tournament.name||'Golf Tournament'}</h1>
           <p>
-            {tournament.pgaEvent ? `${tournament.pgaEvent}` : 'No PGA event set'}
+            {tournament.pgaEvent ? tournament.pgaEvent : 'No PGA event set'}
             {tournament.date ? ` · ${tournament.date}` : ''}
+            {' '}
+            <span style={{
+              fontSize:9, fontFamily:'DM Mono,monospace',
+              color: syncStatus==='live' ? 'var(--green)'
+                   : syncStatus==='offline' ? 'var(--red)'
+                   : 'var(--muted)'
+            }}>
+              {syncStatus==='live' ? '● live' : syncStatus==='offline' ? '● offline' : '● syncing'}
+            </span>
           </p>
         </div>
         <button className="btn sm sec" style={{width:'auto'}} onClick={()=>setAdminMode(a=>!a)}>

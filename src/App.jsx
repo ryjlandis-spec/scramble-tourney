@@ -433,46 +433,15 @@ html,body{background:var(--bg);color:var(--cream);font-family:'Inter',sans-serif
 
 // ── VIEWS ──────────────────────────────────────────────────────────────────
 
-function SetupView({ state, setState, adminMode, setSyncStatus }) {
+function SetupView({ state, setState, adminMode, setSyncStatus, syncESPN, syncing, syncMsg }) {
   const { tournament, teams, proScores } = state;
   const [tab, setTab] = useState('tournament');
   const [newTeam, setNewTeam] = useState({ name:'', player1:'', player2:'', hcp1:0, hcp2:0 });
   const [proSearch, setProSearch] = useState('');
-  const [syncing, setSyncing] = useState(false);
-  const [syncMsg, setSyncMsg] = useState('');
   const [expandedTeam, setExpandedTeam] = useState(null);
   const [teamProSearch, setTeamProSearch] = useState('');
 
   const setT = (f,v) => setState(p => ({...p, tournament:{...p.tournament,[f]:v}}));
-
-  async function syncESPN() {
-    setSyncing(true); setSyncMsg('Fetching ESPN…');
-    try {
-      const res = await fetch(ESPN_API);
-      const data = await res.json();
-      const event = data.events?.[0];
-      if (!event) throw new Error('No event');
-      const holes = event.courses?.[0]?.holes;
-      if (holes?.length === 18) setState(p => ({...p, par: holes.map(h => h.shotsToPar)}));
-      if (event.name) setState(p => ({...p, tournament:{...p.tournament, pgaEvent: event.name}}));
-      const competitors = event.competitions?.[0]?.competitors || [];
-      const espnMap = {};
-      competitors.forEach(c => {
-        const name = c.athlete?.displayName;
-        const s = c.statistics?.find(x => x.name === 'scoreToPar');
-        if (name) espnMap[name] = s?.value ?? 0;
-      });
-      let matched = 0;
-      const newScores = {};
-      PROS.forEach(pro => {
-        const found = Object.entries(espnMap).find(([n]) => namesMatch(n, pro.name));
-        if (found) { newScores[pro.id] = found[1]; matched++; }
-      });
-      setState(p => ({...p, proScores:{...p.proScores, ...newScores}}));
-      setSyncMsg(`✓ Synced ${matched}/${PROS.length} pros · ${new Date().toLocaleTimeString()}`);
-    } catch(e) { setSyncMsg('✗ Sync failed'); }
-    setSyncing(false);
-  }
 
   function addTeam() {
     if (!newTeam.name || !newTeam.player1 || !newTeam.player2) return;
@@ -2121,6 +2090,45 @@ export default function App() {
   const [showAdminPrompt, setShowAdminPrompt] = useState(false);
   const [pwInput, setPwInput]     = useState('');
   const [pwError, setPwError]     = useState(false);
+  const [syncing, setSyncing]     = useState(false);
+  const [syncMsg, setSyncMsg]     = useState('');
+
+  async function syncESPN() {
+    setSyncing(true); setSyncMsg('Fetching ESPN…');
+    try {
+      const res = await fetch(ESPN_API);
+      const data = await res.json();
+      const event = data.events?.[0];
+      if (!event) throw new Error('No event');
+      const holes = event.courses?.[0]?.holes;
+      if (holes?.length === 18) setState(p => ({...p, par: holes.map(h => h.shotsToPar)}));
+      if (event.name) setState(p => ({...p, tournament:{...p.tournament, pgaEvent: event.name}}));
+      const competitors = event.competitions?.[0]?.competitors || [];
+      const espnMap = {};
+      competitors.forEach(c => {
+        const name = c.athlete?.displayName;
+        const s = c.statistics?.find(x => x.name === 'scoreToPar');
+        if (name) espnMap[name] = s?.value ?? 0;
+      });
+      let matched = 0;
+      const newScores = {};
+      PROS.forEach(pro => {
+        const found = Object.entries(espnMap).find(([n]) => namesMatch(n, pro.name));
+        if (found) { newScores[pro.id] = found[1]; matched++; }
+      });
+      setState(p => ({...p, proScores:{...p.proScores, ...newScores}}));
+      setSyncMsg(`✓ Auto-synced ${matched} pros · ${new Date().toLocaleTimeString()}`);
+    } catch(e) { setSyncMsg('✗ Sync failed'); }
+    setSyncing(false);
+  }
+
+  // Auto-sync ESPN scores every 60 seconds
+  useEffect(() => {
+    syncESPN(); // sync immediately on mount
+    const id = setInterval(syncESPN, 60_000);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // lastFirestoreState: JSON string of the last state we received FROM Firestore.
   // We compare current state to this before saving — if they match, the change
@@ -2308,7 +2316,7 @@ export default function App() {
         </button>
       </div>
 
-      {view === 'setup'       && <SetupView      state={state} setState={setState} adminMode={adminMode} setSyncStatus={setSyncStatus} />}
+      {view === 'setup'       && <SetupView      state={state} setState={setState} adminMode={adminMode} setSyncStatus={setSyncStatus} syncESPN={syncESPN} syncing={syncing} syncMsg={syncMsg} />}
       {view === 'pros'        && <ProsView        state={state} />}
       {view === 'scores'      && <ScoresView      state={state} setState={setState} />}
       {view === 'leaderboard' && <LeaderboardView state={state} />}

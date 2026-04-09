@@ -2138,15 +2138,11 @@ export default function App() {
       competitors.forEach(c => {
         const name = c.athlete?.displayName;
         const s = c.statistics?.find(x => x.name === 'scoreToPar');
-        // ESPN uses different field names depending on the event/endpoint
         const hStat = c.statistics?.find(x =>
-          x.name === 'holesPlayed' ||
-          x.name === 'thru' ||
-          x.name === 'holes'
+          x.name === 'holesPlayed' || x.name === 'thru' || x.name === 'holes'
         );
-        const holes = hStat?.value ?? c.status?.thru ?? c.linescores?.length ?? null;
-        // Debug: log one player's full stat names so we can see ESPN's schema
-        if (name === 'Ryan Fox') console.log('[ESPN] Ryan Fox raw:', JSON.stringify({stats: c.statistics?.map(x=>({name:x.name,value:x.value})), status: c.status, linescoresLen: c.linescores?.length}));
+        // status.thru is the most reliable source — it's what ESPN shows on screen
+        const holes = hStat?.value ?? c.status?.thru ?? null;
         if (name) espnMap[name] = { score: s?.value ?? 0, holes };
       });
       let matched = 0;

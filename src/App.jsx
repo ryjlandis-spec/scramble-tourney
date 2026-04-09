@@ -2259,9 +2259,13 @@ export default function App() {
     const unsub = onSnapshot(
       doc(db, col, docId),
       (snap) => {
-        setSyncStatus(prev =>
-          prev === 'connecting' || prev === 'offline' ? 'live' : prev
-        );
+        setSyncStatus(prev => {
+          // On reconnection (offline → live), extend the userEditedAt guard.
+          // The reconnecting snapshot may carry stale data — protect local state
+          // for 30 more seconds while Firestore re-syncs.
+          if (prev === 'offline') userEditedAt.current = Date.now();
+          return prev === 'connecting' || prev === 'offline' ? 'live' : prev;
+        });
         // Mark that we've seen Firestore — now safe to write
         hasReceivedSnapshot.current = true;
         if (!snap.exists()) return;
@@ -2275,6 +2279,10 @@ export default function App() {
         const merged = {
           ...remote,
           par: DEFAULT_PAR,
+          // Never let a stale reconnect snapshot reduce the team count
+          teams: (remote.teams||[]).length >= (stateRef.current.teams||[]).length
+            ? remote.teams
+            : stateRef.current.teams,
           // proScores: Firestore wins (admin edits), ESPN will overlay on next sync
           proScores: remote.proScores || stateRef.current.proScores || {},
           // proHoles: always local — ESPN-only, never in Firestore
@@ -2294,6 +2302,9 @@ export default function App() {
       (err) => {
         console.warn('Firestore error:', err);
         setSyncStatus('offline');
+        // On disconnect, force re-upload when we reconnect by resetting lastFirestoreState.
+        // This ensures local state overwrites any stale Firestore cache on reconnect.
+        lastFirestoreState.current = '__offline__';
       }
     );
     return () => unsub();

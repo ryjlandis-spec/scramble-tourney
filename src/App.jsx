@@ -212,18 +212,7 @@ function loadLocal() {
 function saveLocal(s) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch {}
 }
-async function loadFromFirestore() {
-  try {
-    const [col, docId] = FS_DOC.split('/');
-    const snap = await getDoc(doc(db, col, docId));
-    return snap.exists() ? snap.data().state : null;
-  } catch(e) { console.warn('Firestore load failed:', e); return null; }
-}
-async function saveToFirestore(s, ts) {
-  const clean = JSON.parse(JSON.stringify(s));
-  const [col, docId] = FS_DOC.split('/');
-  await setDoc(doc(db, col, docId), { state: clean, updatedAt: ts || Date.now() });
-}
+
 
 // ── HELPERS ────────────────────────────────────────────────────────────────
 function fmt(n) {
@@ -538,9 +527,8 @@ function SetupView({ state, setState, adminMode, setSyncStatus }) {
               setSyncStatus('syncing');
               try {
                 const clean = JSON.parse(JSON.stringify(state));
-                const {doc: fsDoc, setDoc: fsSet} = await import('firebase/firestore');
-                const {db: fsDb} = await import('../firebase');
-                await fsSet(fsDoc(fsDb,'tournament','state'),{state:clean,updatedAt:Date.now()});
+                const [col, docId] = FS_DOC.split('/');
+                await setDoc(doc(db, col, docId), { state: clean, updatedAt: Date.now() });
                 setSyncStatus('live');
                 alert('Saved! ✓ All devices will update within seconds.');
               } catch(e) {
@@ -1798,6 +1786,11 @@ export default function App() {
   // came from Firestore and we skip the save to prevent echo loops.
   const lastFirestoreState = useRef(null);
 
+  // stateRef: always mirrors `state` so the onSnapshot closure (which runs
+  // with empty deps and therefore captures a stale `state`) can read current
+  // state without going stale itself.
+  const stateRef = useRef(state);
+
   // userEditedAt: timestamp of last local edit. We refuse Firestore updates
   // for 5 seconds after a local edit so typing doesn't get wiped mid-keystroke.
   const userEditedAt = useRef(0);
@@ -1805,6 +1798,9 @@ export default function App() {
   // mounted: skip the very first effect run (initial render — no need to save)
   const mounted   = useRef(false);
   const saveTimer = useRef(null);
+
+  // Keep stateRef in sync on every render
+  useEffect(() => { stateRef.current = state; }, [state]);
 
   // Inject CSS once
   useEffect(() => {
@@ -1820,7 +1816,11 @@ export default function App() {
     const unsub = onSnapshot(
       doc(db, col, docId),
       (snap) => {
-        setSyncStatus('live');
+        // Don't overwrite an error status that was set by a failed write —
+        // only advance to 'live' if we aren't currently showing an error.
+        // This prevents a snapshot arrival from silently masking a write failure.
+        setSyncStatus(prev => prev.startsWith('error:') ? prev : 'live');
+
         if (!snap.exists()) return;
         const remote = snap.data().state;
         if (!remote) return;
@@ -1831,8 +1831,9 @@ export default function App() {
         const merged = { ...remote, par: DEFAULT_PAR };
         const mergedStr = JSON.stringify(merged);
 
-        // If this matches our current local state, nothing to do
-        const currentStr = JSON.stringify(state);
+        // Use stateRef (not the stale closure `state`) so this comparison
+        // always checks against the *current* state, not the initial render value.
+        const currentStr = JSON.stringify(stateRef.current);
         if (mergedStr === currentStr) return;
 
         // Accept the Firestore data — record it so save effect knows to skip

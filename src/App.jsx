@@ -1578,7 +1578,6 @@ function LeaderboardView({ state }) {
                       </div>
                     </div>
                   )}
-                  )}
                 </div>
               );
             })}

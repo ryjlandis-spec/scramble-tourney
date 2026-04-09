@@ -269,17 +269,24 @@ function calcTeam(team, proScores, tournament, proHoles = {}) {
   const proCount = tournament?.proCount || 1;
   const hasHolesData = Object.keys(proHoles).length > 0;
 
-  const pVals = (team.proIds || [])
-    .filter(id => {
-      // If ESPN has synced holes data, only count pros who've played at least 1 hole.
-      // If no holes data yet (pre-tournament / no sync), include all drafted pros.
-      if (!hasHolesData) return true;
-      return (proHoles[id] ?? 0) > 0;
-    })
-    .map(id => proScores[id] !== undefined ? proScores[id] : 0)
-    .sort((a,b) => a - b)
-    .slice(0, proCount);
-  const proTotal = pVals.length === proCount ? pVals.reduce((a,b)=>a+b,0) : null;
+  let proTotal;
+  if (hasHolesData) {
+    // Live round: sum ALL pros that have played at least 1 hole.
+    // (Best-N is the final scoring rule; during the round show the running total.)
+    const playedScores = (team.proIds || [])
+      .filter(id => (proHoles[id] ?? 0) > 0)
+      .map(id => proScores[id] ?? 0);
+    proTotal = playedScores.length > 0
+      ? playedScores.reduce((a, b) => a + b, 0)
+      : null;
+  } else {
+    // Pre-tournament (no ESPN data yet): use best-N of all drafted pros.
+    const pVals = (team.proIds || [])
+      .map(id => proScores[id] ?? 0)
+      .sort((a, b) => a - b)
+      .slice(0, proCount);
+    proTotal = pVals.length === proCount ? pVals.reduce((a, b) => a + b, 0) : null;
+  }
 
   // Pre-round: show proTotal alone so teams appear on the leaderboard before scramble starts.
   // During round: combine scramble + pro scores.
@@ -1512,8 +1519,16 @@ function LeaderboardView({ state }) {
               const displayScore = showNet ? netCombined : combined;
               const {text,cls}=fmt(displayScore);
               const isOpen=open===team.id;
-              const sortedProIds=[...(team.proIds||[])].sort((a,b)=>(proScores[a]??0)-(proScores[b]??0));
-              const top3=sortedProIds.slice(0,3);
+              const hasHoles = Object.keys(proHoles).length > 0;
+              // Sort: played pros first (by score), then unplayed
+              const sortedProIds=[...(team.proIds||[])].sort((a,b)=>{
+                const aPlayed = (proHoles[a]??0) > 0;
+                const bPlayed = (proHoles[b]??0) > 0;
+                if (aPlayed && !bPlayed) return -1;
+                if (!aPlayed && bPlayed) return 1;
+                return (proScores[a]??0)-(proScores[b]??0);
+              });
+              const playedIds = sortedProIds.filter(id => (proHoles[id]??0) > 0);
               return (
                 <div key={team.id}>
                   <div className="lb-row" onClick={()=>setOpen(isOpen?null:team.id)}>
@@ -1526,7 +1541,7 @@ function LeaderboardView({ state }) {
                       <div className={`lb-big ${cls}`}>{text}</div>
                       <div className="lb-detail">
                         {n>0?`Scr: ${fmt(scrambleToPar).text}`:'No scores'}
-                        {proTotal!==null?` · Best ${tournament?.proCount||1}: ${fmt(proTotal).text}`:''}
+                        {proTotal!==null?` · Pros: ${fmt(proTotal).text}`:''}
                         {hcp>0?` · HCP -${hcp}`:''}
                       </div>
                     </div>
@@ -1537,20 +1552,29 @@ function LeaderboardView({ state }) {
                       <div className="lbl" style={{marginBottom:6}}>Drafted Pros</div>
                       {sortedProIds.length===0
                         ? <div style={{fontSize:12,color:'var(--muted)'}}>No pros drafted yet</div>
-                        : sortedProIds.map((id,idx) => {
-                          const pro=PROS_MAP[id]; const s=proScores[id]??0; const {text:pt,cls:pc}=fmt(s);
-                          const inTop=top3.includes(id);
+                        : sortedProIds.map((id) => {
+                          const pro=PROS_MAP[id];
+                          const s=proScores[id]??0;
+                          const {text:pt,cls:pc}=fmt(s);
+                          const played = (proHoles[id]??0) > 0;
+                          const holes = proHoles[id];
+                          // Star = played and counting (all played pros count during live round)
+                          const inTop = hasHoles ? played : playedIds.length===0;
                           return (
-                            <div key={id} style={{display:'flex',alignItems:'center',gap:8,padding:'3px 0',opacity:inTop?1:0.45}}>
-                              <span style={{fontSize:11,color:'var(--gold)',width:14}}>{inTop?'★':''}</span>
+                            <div key={id} style={{display:'flex',alignItems:'center',gap:8,padding:'4px 0',opacity:played?1:0.4}}>
+                              <span style={{fontSize:11,color:'var(--gold)',width:14}}>{inTop&&played?'★':''}</span>
                               <span style={{fontSize:12,flex:1}}>{pro?.name}</span>
+                              {holes!=null && <span style={{fontSize:10,color:'var(--muted)',fontFamily:'DM Mono,monospace'}}>thru {holes}</span>}
                               <span className={`sc ${pc}`} style={{fontSize:11}}>{pt}</span>
                             </div>
                           );
                         })
                       }
-                      <div style={{marginTop:8,fontSize:11,color:'var(--muted)'}}>★ top {proCount} counted in combined score</div>
+                      <div style={{marginTop:6,fontSize:10,color:'var(--muted)'}}>
+                        {hasHoles ? '★ = currently playing · unplayed pros faded' : `Best ${proCount} will count at end of round`}
+                      </div>
                     </div>
+                  )}
                   )}
                 </div>
               );
@@ -2233,7 +2257,13 @@ export default function App() {
         // Don't overwrite local state while user is actively editing
         if (Date.now() - userEditedAt.current < 5000) return;
 
-        const merged = { ...remote, par: DEFAULT_PAR };
+        // Merge: Firestore wins for everything except proHoles, which is ESPN-derived
+        // and may be absent from older Firestore documents.
+        const merged = {
+          ...remote,
+          par: DEFAULT_PAR,
+          proHoles: { ...(stateRef.current.proHoles || {}), ...(remote.proHoles || {}) },
+        };
         const mergedStr = JSON.stringify(merged);
 
         // Use stateRef (not stale closure `state`) so this comparison is always fresh

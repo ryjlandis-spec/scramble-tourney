@@ -274,13 +274,16 @@ function calcTeam(team, proScores, tournament, proHoles = {}) {
 
   let proTotal;
   if (hasHolesData) {
-    // Live round: sum ALL pros that have played at least 1 hole.
-    // (Best-N is the final scoring rule; during the round show the running total.)
-    const playedScores = (team.proIds || [])
+    // Live round: best-N of pros that have played at least 1 hole.
+    // Unplayed pros default to 0 (even) which incorrectly inflates the score —
+    // only include pros who've actually teed off.
+    const playedVals = (team.proIds || [])
       .filter(id => (proHoles[id] ?? 0) > 0)
-      .map(id => proScores[id] ?? 0);
-    proTotal = playedScores.length > 0
-      ? playedScores.reduce((a, b) => a + b, 0)
+      .map(id => proScores[id] ?? 0)
+      .sort((a, b) => a - b)
+      .slice(0, proCount);
+    proTotal = playedVals.length === proCount
+      ? playedVals.reduce((a, b) => a + b, 0)
       : null;
   } else {
     // Pre-tournament (no ESPN data yet): use best-N of all drafted pros.

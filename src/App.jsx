@@ -1260,13 +1260,17 @@ function ScoresView({ state, setState }) {
       />
     )}
     <div className="page">
-      <div style={{height:14}}/>
-      <div className="tabs">
-        {teams.map(t=>(
-          <button key={t.id} className={`tab ${selTeam===t.id?'on':''}`} onClick={()=>setSelTeam(t.id)}>
-            {t.name}
-          </button>
-        ))}
+      <div className="sec" style={{paddingBottom:0}}>
+        <select
+          className="inp"
+          value={selTeam||''}
+          onChange={e=>setSelTeam(e.target.value)}
+          style={{marginBottom:0,fontWeight:600}}
+        >
+          {teams.map(t=>(
+            <option key={t.id} value={t.id}>{t.name}</option>
+          ))}
+        </select>
       </div>
 
       <div className="sec" style={{paddingTop:0}}>
@@ -2014,19 +2018,29 @@ function StatsView({ state }) {
 
   return (
     <div className="page">
-      <div style={{height:14}}/>
-      {/* Mode tabs: Field + each team */}
-      <div className="tabs">
-        <button className={`tab ${mode==='field'?'on':''}`} onClick={()=>setMode('field')}>
-          🏆 Field
-        </button>
-        {teams.map(t=>(
-          <button key={t.id} className={`tab ${mode===t.id?'on':''}`} onClick={()=>setMode(t.id)}>
-            {t.name}
+      <div className="sec" style={{paddingBottom:0}}>
+        <div style={{display:'flex',gap:8}}>
+          <button
+            className={`btn sm ${mode==='field'?'':'sec'}`}
+            style={{flexShrink:0,padding:'10px 14px'}}
+            onClick={()=>setMode('field')}
+          >
+            🏆 Field
           </button>
-        ))}
+          <select
+            className="inp"
+            style={{marginBottom:0,flex:1}}
+            value={mode==='field'?'':mode}
+            onChange={e=>setMode(e.target.value)}
+          >
+            <option value="">— Select team —</option>
+            {teams.map(t=>(
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+        </div>
       </div>
-      <div className="sec" style={{paddingTop:0}}>
+      <div className="sec" style={{paddingTop:12}}>
         {mode==='field'
           ? <FieldView />
           : team ? <TeamDetailView team={team} /> : null

@@ -927,12 +927,23 @@ function ShotModal({ team, holeIndex, par, onClose, onSave }) {
   const holeYds  = HOLE_YDS[holeIndex] || 0;
 
   // Positions: [{lie, dist}] — green dist in feet, others in yards
-  // Pre-populate position 0 from hole yardage
+  // Pre-populate from existing shots, or from the entered score if shots are empty,
+  // or fall back to the standard tee + fairway pair.
   const existing = (team.shots?.[holeIndex] || []);
-  const defaultPos = [
-    { lie:'tee', dist: holeYds, player: team.player1 },
-    { lie:'fairway', dist: 0, player: team.player1 },
-  ];
+  const existingScore = team.scores?.[holeIndex];
+  const scoreNum = (existingScore !== '' && existingScore !== null && existingScore !== undefined)
+    ? Number(existingScore) : null;
+
+  const defaultPos = (scoreNum !== null && scoreNum >= 1)
+    ? [
+        { lie:'tee', dist: holeYds, player: team.player1 },
+        ...Array(Math.max(0, scoreNum - 1)).fill(null).map(() => ({ lie:'fairway', dist:0, player: team.player1 })),
+        { lie:'holed', dist:0 },
+      ]
+    : [
+        { lie:'tee', dist: holeYds, player: team.player1 },
+        { lie:'fairway', dist: 0, player: team.player1 },
+      ];
   const [positions, setPositions] = useState(
     existing.length >= 2 ? existing : defaultPos
   );
@@ -1231,11 +1242,16 @@ function ScoresView({ state, setState }) {
   }
 
   function saveShots(holeIndex, shots) {
+    const lastLie = shots[shots.length-1]?.lie;
+    const isTerminal = lastLie === 'holed' || lastLie === 'gimme';
+    const calcScore = isTerminal ? String(shots.length - 1) : null;
     setState(p=>({...p,teams:p.teams.map(t=>{
       if(t.id!==team.id)return t;
       const sh=[...(t.shots||Array(18).fill(null).map(()=>[]))];
       sh[holeIndex]=shots;
-      return {...t,shots:sh};
+      const sc=[...t.scores];
+      if(calcScore !== null) sc[holeIndex]=calcScore;
+      return {...t,shots:sh,scores:sc};
     })}));
     setTrackingHole(null);
   }
@@ -1267,6 +1283,7 @@ function ScoresView({ state, setState }) {
           onChange={e=>setSelTeam(e.target.value)}
           style={{marginBottom:0,fontWeight:600}}
         >
+          <option value="">— Select team —</option>
           {teams.map(t=>(
             <option key={t.id} value={t.id}>{t.name}</option>
           ))}

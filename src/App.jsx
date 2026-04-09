@@ -961,8 +961,25 @@ function ShotModal({ team, holeIndex, par, onClose, onSave }) {
   }
 
   function removePos(i) {
-    if (i === 0 || positions.length <= 2) return;
+    if (i === 0) return; // can never remove the starting tee position
     setPositions(p => p.filter((_,idx) => idx!==i));
+  }
+
+  function resetPositions() {
+    const score = team.scores?.[holeIndex];
+    const scoreNum = (score !== '' && score !== null && score !== undefined) ? Number(score) : null;
+    if (scoreNum !== null && scoreNum >= 1) {
+      setPositions([
+        { lie:'tee', dist: holeYds, player: team.player1 },
+        ...Array(Math.max(0, scoreNum - 1)).fill(null).map(() => ({ lie:'fairway', dist:0, player: team.player1 })),
+        { lie:'holed', dist:0 },
+      ]);
+    } else {
+      setPositions([
+        { lie:'tee', dist: holeYds, player: team.player1 },
+        { lie:'fairway', dist: 0, player: team.player1 },
+      ]);
+    }
   }
 
   function markHoled() {
@@ -1011,6 +1028,12 @@ function ShotModal({ team, holeIndex, par, onClose, onSave }) {
           </div>
           <button className="btn sm" onClick={()=>onSave(positions)}>Save</button>
         </div>
+        <button
+          onClick={resetPositions}
+          style={{width:'100%',marginBottom:12,padding:'7px',borderRadius:7,border:'1px solid var(--border2)',background:'none',color:'var(--muted)',fontFamily:'DM Mono,monospace',fontSize:10,cursor:'pointer',letterSpacing:'.4px',textTransform:'uppercase'}}
+        >
+          ↺ Start Over
+        </button>
 
         {/* Position rows */}
         {positions.map((pos, i) => {

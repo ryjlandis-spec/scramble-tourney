@@ -72,7 +72,15 @@ const ADMIN_PASSWORD = 'Eagle47';
 
 // Normalize a name for fuzzy matching (last name + first initial)
 function normalizeName(n) {
-  return n.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z\s]/g, '').trim();
+  return n
+    .replace(/\s*\(a\)\s*/gi, '')   // strip amateur suffix e.g. "Ethan Fang (a)"
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // strip diacritics that decompose
+    .replace(/ø/g, 'o').replace(/Ø/g, 'O')           // ø doesn't decompose under NFD
+    .replace(/ł/g, 'l').replace(/Ł/g, 'L')           // same for Polish ł
+    .replace(/ß/g, 'ss')                              // German ß
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, '')
+    .trim();
 }
 function namesMatch(espnName, ourName) {
   const a = normalizeName(espnName);
@@ -2302,8 +2310,11 @@ export default function App() {
       (err) => {
         console.warn('Firestore error:', err);
         setSyncStatus('offline');
-        // On disconnect, force re-upload when we reconnect by resetting lastFirestoreState.
-        // This ensures local state overwrites any stale Firestore cache on reconnect.
+        // Protect local state: treat the disconnect as a "user edit" so the
+        // reconnect snapshot won't overwrite local data for 60 seconds.
+        // This gives the retry write (triggered by __offline__ != stateStr)
+        // time to land before any incoming snapshot can replace local state.
+        userEditedAt.current = Date.now() + 30_000; // extend window by 60s total
         lastFirestoreState.current = '__offline__';
       }
     );
@@ -2347,6 +2358,18 @@ export default function App() {
       } catch (e) {
         console.error('Firestore save failed:', e);
         setSyncStatus('error:' + (e?.code || e?.message || 'unknown'));
+        // Retry after 5 seconds — covers transient network drops (QUIC errors etc.)
+        saveTimer.current = setTimeout(async () => {
+          try {
+            const clean = toFirestore(stateRef.current);
+            const [col2, docId2] = FS_DOC.split('/');
+            await setDoc(doc(db, col2, docId2), { state: clean, updatedAt: Date.now() });
+            lastFirestoreState.current = JSON.stringify(espnStrip(stateRef.current));
+            setSyncStatus('live');
+          } catch (e2) {
+            console.error('Firestore retry failed:', e2);
+          }
+        }, 5000);
       }
     }, 1000);
   // eslint-disable-next-line react-hooks/exhaustive-deps

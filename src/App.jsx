@@ -2228,6 +2228,11 @@ export default function App() {
   // lastFirestoreState: tracks what Firestore has (ESPN fields excluded for consistency).
   const lastFirestoreState = useRef(JSON.stringify(espnStrip(INIT)));
 
+  // hasReceivedSnapshot: blocks ALL Firestore writes until we've received at least
+  // one snapshot. Prevents a client opening with empty localStorage from overwriting
+  // everyone's data before it knows what's already in Firestore.
+  const hasReceivedSnapshot = useRef(false);
+
   // userEditedAt: 30-second guard — Firestore snapshots won't overwrite local state
   // for 30 seconds after any user edit (gives the Firestore write time to land).
   const userEditedAt = useRef(0);
@@ -2257,6 +2262,8 @@ export default function App() {
         setSyncStatus(prev =>
           prev === 'connecting' || prev === 'offline' ? 'live' : prev
         );
+        // Mark that we've seen Firestore — now safe to write
+        hasReceivedSnapshot.current = true;
         if (!snap.exists()) return;
         const remote = fromFirestore(snap.data().state);
         if (!remote) return;
@@ -2303,6 +2310,14 @@ export default function App() {
     // (from ESPN sync) must never be the reason we write to Firestore.
     const stateStr = JSON.stringify(espnStrip(state));
     if (stateStr === lastFirestoreState.current) return;
+
+    // Don't write to Firestore until we've received at least one snapshot.
+    // Without this, a client opening with empty localStorage could overwrite
+    // everyone's data before it learns what's already in Firestore.
+    if (!hasReceivedSnapshot.current) {
+      saveLocal(state);
+      return;
+    }
 
     // Genuine user edit — record when it happened and queue a save
     userEditedAt.current = Date.now();

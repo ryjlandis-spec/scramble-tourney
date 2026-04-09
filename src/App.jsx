@@ -345,12 +345,12 @@ html,body{background:var(--bg);color:var(--cream);font-family:'Inter',sans-serif
 .nb.on{color:var(--gold);}
 .nb .ico{font-size:19px;}
 /* Pages */
-.page{padding-bottom:8px;}
-.sec{padding:14px 16px;}
+.page{padding-bottom:8px;width:100%;overflow-x:hidden;}
+.sec{padding:14px 16px;width:100%;box-sizing:border-box;}
 .sec+.sec{padding-top:0;}
 .sh{font-family:'Playfair Display',serif;font-size:15px;color:var(--gold);margin-bottom:10px;}
 /* Cards */
-.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px;overflow:hidden;}
 .card-sm{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;text-align:center;}
 /* Inputs */
 .inp{width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:7px;color:var(--cream);font-family:'Inter',sans-serif;font-size:14px;padding:10px 12px;outline:none;transition:border-color .2s;margin-bottom:8px;appearance:none;}
@@ -386,10 +386,10 @@ html,body{background:var(--bg);color:var(--cream);font-family:'Inter',sans-serif
 .lb-big.dim{color:var(--muted);}
 .lb-detail{font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;margin-top:2px;}
 /* Scorecard */
-.sc-grid{display:grid;grid-template-columns:36px 38px 24px 1fr 36px;gap:4px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);}
+.sc-grid{display:grid;grid-template-columns:36px 38px 24px minmax(0,1fr) 36px;gap:4px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);}
 .sc-grid:last-child{border-bottom:none;}
 .hn{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);text-align:center;}
-.hinp{width:100%;max-width:100%;height:38px;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;color:var(--cream);font-family:'DM Mono',monospace;font-size:16px;text-align:center;outline:none;appearance:textfield;}
+.hinp{width:100%;min-width:0;height:38px;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;color:var(--cream);font-family:'DM Mono',monospace;font-size:16px;text-align:center;outline:none;appearance:textfield;}
 .hinp:focus{border-color:var(--gold);}
 .hinp::-webkit-inner-spin-button,.hinp::-webkit-outer-spin-button{-webkit-appearance:none;}
 /* Draft */

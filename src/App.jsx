@@ -1789,15 +1789,22 @@ export default function App() {
     const s = loadLocal();
     return s ? { ...s, par: DEFAULT_PAR } : INIT;
   });
-  const [view, setView]       = useState('leaderboard');
+  const [view, setView]           = useState('leaderboard');
   const [adminMode, setAdminMode] = useState(false);
   const [syncStatus, setSyncStatus] = useState('connecting');
 
-  // Track when the user last made a local edit.
-  // We will NOT accept Firestore updates if the user edited within the last 6s —
-  // this prevents the snapshot from wiping typing before the save debounce fires.
+  // lastFirestoreState: JSON string of the last state we received FROM Firestore.
+  // We compare current state to this before saving — if they match, the change
+  // came from Firestore and we skip the save to prevent echo loops.
+  const lastFirestoreState = useRef(null);
+
+  // userEditedAt: timestamp of last local edit. We refuse Firestore updates
+  // for 5 seconds after a local edit so typing doesn't get wiped mid-keystroke.
   const userEditedAt = useRef(0);
-  const saveTimer    = useRef(null);
+
+  // mounted: skip the very first effect run (initial render — no need to save)
+  const mounted   = useRef(false);
+  const saveTimer = useRef(null);
 
   // Inject CSS once
   useEffect(() => {
@@ -1807,7 +1814,7 @@ export default function App() {
     return () => document.head.removeChild(el);
   }, []);
 
-  // Real-time Firestore listener
+  // ── Real-time Firestore listener ────────────────────────────────────
   useEffect(() => {
     const [col, docId] = FS_DOC.split('/');
     const unsub = onSnapshot(
@@ -1818,10 +1825,18 @@ export default function App() {
         const remote = snap.data().state;
         if (!remote) return;
 
-        // If the user has edited recently, skip — their save is in flight
-        if (Date.now() - userEditedAt.current < 6000) return;
+        // Don't overwrite local state while user is actively editing
+        if (Date.now() - userEditedAt.current < 5000) return;
 
         const merged = { ...remote, par: DEFAULT_PAR };
+        const mergedStr = JSON.stringify(merged);
+
+        // If this matches our current local state, nothing to do
+        const currentStr = JSON.stringify(state);
+        if (mergedStr === currentStr) return;
+
+        // Accept the Firestore data — record it so save effect knows to skip
+        lastFirestoreState.current = mergedStr;
         setState(merged);
         saveLocal(merged);
       },
@@ -1831,26 +1846,44 @@ export default function App() {
       }
     );
     return () => unsub();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Debounced save to Firestore on every local state change
+  // ── Save local changes to Firestore ────────────────────────────────
   useEffect(() => {
+    // Skip the initial render — nothing new to save on first mount
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+
     saveLocal(state);
-    userEditedAt.current = Date.now();             // mark that user just edited
+
+    const stateStr = JSON.stringify(state);
+
+    // If this state matches the last thing we got from Firestore, it IS the
+    // Firestore data — don't save it back or we'll create an infinite loop
+    if (stateStr === lastFirestoreState.current) return;
+
+    // This is a real local change — record when it happened
+    userEditedAt.current = Date.now();
+
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       setSyncStatus('syncing');
       try {
-        const clean = JSON.parse(JSON.stringify(state));
+        const clean = JSON.parse(stateStr);
         const [col, docId] = FS_DOC.split('/');
         await setDoc(doc(db, col, docId), { state: clean, updatedAt: Date.now() });
+        // Record that this state is now what Firestore has
+        lastFirestoreState.current = stateStr;
         setSyncStatus('live');
-        userEditedAt.current = 0; // allow Firestore updates again after successful save
       } catch (e) {
         console.error('Firestore save failed:', e);
         setSyncStatus('error:' + (e?.code || e?.message || 'unknown'));
       }
-    }, 1500);
+    }, 1000);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
   const { tournament } = state;

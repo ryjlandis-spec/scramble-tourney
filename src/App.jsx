@@ -1314,10 +1314,13 @@ function ScoresView({ state, setState }) {
             </div>
 
             {/* Scorecard */}
+            <div style={{fontSize:11,color:'var(--muted)',fontFamily:'DM Mono,monospace',marginBottom:6,textAlign:'center'}}>
+              Tap ✏️ on any hole to log shots
+            </div>
             <div className="card" style={{padding:'8px 12px'}}>
               {/* Header */}
               <div className="sc-grid" style={{paddingBottom:6}}>
-                <div className="hn" style={{color:'var(--gold)'}}>HLE</div>
+                <div className="hn" style={{color:'var(--gold)'}}>✏️</div>
                 <div className="hn" style={{color:'var(--gold)'}}>YDS</div>
                 <div className="hn" style={{color:'var(--gold)'}}>PAR</div>
                 <div style={{fontSize:10,color:'var(--gold)',fontFamily:'DM Mono,monospace',paddingLeft:4}}>SCORE</div>
@@ -1328,9 +1331,15 @@ function ScoresView({ state, setState }) {
               {Array.from({length:9},(_,h)=>(
                 <div key={h}>
                   <div className="sc-grid">
-                    <div style={{cursor:'pointer',textAlign:'center',borderRadius:4,border:teamHcp>0&&HOLE_HCP[h]<=teamHcp?'1px solid rgba(201,168,76,.35)':'1px solid transparent',padding:'1px 2px'}} onClick={()=>setTrackingHole(h)}>
-                      <div style={{fontFamily:'DM Mono,monospace',fontSize:11,color:(team.shots?.[h]?.length||0)>1?'var(--gold)':'var(--muted)'}}>{h+1}</div>
-                      <div style={{fontFamily:'DM Mono,monospace',fontSize:8,color:'var(--border2)',marginTop:-1}}>h{HOLE_HCP[h]}</div>
+                    <div
+                      onClick={()=>setTrackingHole(h)}
+                      style={{
+                        cursor:'pointer',textAlign:'center',borderRadius:6,padding:'3px 2px',
+                        background:(team.shots?.[h]?.length||0)>1?'rgba(201,168,76,.12)':'var(--surface2)',
+                        border:teamHcp>0&&HOLE_HCP[h]<=teamHcp?'1px solid rgba(201,168,76,.35)':'1px solid var(--border2)',
+                      }}>
+                      <div style={{fontFamily:'DM Mono,monospace',fontSize:11,color:(team.shots?.[h]?.length||0)>1?'var(--gold)':'var(--cream)'}}>{h+1}</div>
+                      <div style={{fontFamily:'DM Mono,monospace',fontSize:8,color:'var(--muted)',marginTop:-1}}>h{HOLE_HCP[h]}</div>
                     </div>
                     <div className="hn" style={{fontSize:10}}>{HOLE_YDS[h]}</div>
                     <div className="hn">{par[h]}</div>
@@ -1372,9 +1381,15 @@ function ScoresView({ state, setState }) {
               {Array.from({length:9},(_,h)=>(
                 <div key={h+9}>
                   <div className="sc-grid">
-                    <div style={{cursor:'pointer',textAlign:'center',borderRadius:4,border:teamHcp>0&&HOLE_HCP[h+9]<=teamHcp?'1px solid rgba(201,168,76,.35)':'1px solid transparent',padding:'1px 2px'}} onClick={()=>setTrackingHole(h+9)}>
-                      <div style={{fontFamily:'DM Mono,monospace',fontSize:11,color:(team.shots?.[h+9]?.length||0)>1?'var(--gold)':'var(--muted)'}}>{h+10}</div>
-                      <div style={{fontFamily:'DM Mono,monospace',fontSize:8,color:'var(--border2)',marginTop:-1}}>h{HOLE_HCP[h+9]}</div>
+                    <div
+                      onClick={()=>setTrackingHole(h+9)}
+                      style={{
+                        cursor:'pointer',textAlign:'center',borderRadius:6,padding:'3px 2px',
+                        background:(team.shots?.[h+9]?.length||0)>1?'rgba(201,168,76,.12)':'var(--surface2)',
+                        border:teamHcp>0&&HOLE_HCP[h+9]<=teamHcp?'1px solid rgba(201,168,76,.35)':'1px solid var(--border2)',
+                      }}>
+                      <div style={{fontFamily:'DM Mono,monospace',fontSize:11,color:(team.shots?.[h+9]?.length||0)>1?'var(--gold)':'var(--cream)'}}>{h+10}</div>
+                      <div style={{fontFamily:'DM Mono,monospace',fontSize:8,color:'var(--muted)',marginTop:-1}}>h{HOLE_HCP[h+9]}</div>
                     </div>
                     <div className="hn" style={{fontSize:10}}>{HOLE_YDS[h+9]}</div>
                     <div className="hn">{par[h+9]}</div>

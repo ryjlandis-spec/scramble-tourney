@@ -6,56 +6,57 @@ import {
 
 // ── CONSTANTS ──────────────────────────────────────────────────────────────
 const PROS = [
+  // ── Masters Champions (lifetime) ──
+  {id:'p1', name:'Scottie Scheffler'},    {id:'p2', name:'Rory McIlroy'},
+  {id:'p3', name:'Jon Rahm'},             {id:'p4', name:'Jordan Spieth'},
+  {id:'p5', name:'Hideki Matsuyama'},     {id:'p6', name:'Patrick Reed'},
+  {id:'p7', name:'Dustin Johnson'},       {id:'p8', name:'Charl Schwartzel'},
+  {id:'p9', name:'Adam Scott'},           {id:'p10',name:'Sergio Garcia'},
+  {id:'p11',name:'Bubba Watson'},         {id:'p12',name:'Mike Weir'},
+  {id:'p13',name:'Danny Willett'},        {id:'p14',name:'Jose Maria Olazabal'},
+  {id:'p15',name:'Fred Couples'},         {id:'p16',name:'Angel Cabrera'},
+  {id:'p17',name:'Vijay Singh'},          {id:'p18',name:'Zach Johnson'},
+  // ── Major Champions in field ──
+  {id:'p19',name:'Xander Schauffele'},    {id:'p20',name:'Collin Morikawa'},
+  {id:'p21',name:'Brooks Koepka'},        {id:'p22',name:'Justin Thomas'},
+  {id:'p23',name:'Bryson DeChambeau'},    {id:'p24',name:'Wyndham Clark'},
+  {id:'p25',name:'Matt Fitzpatrick'},     {id:'p26',name:'Brian Harman'},
+  {id:'p27',name:'Cameron Smith'},        {id:'p28',name:'J.J. Spaun'},
   // ── Top contenders ──
-  {id:'p1',name:'Scottie Scheffler'},{id:'p2',name:'Rory McIlroy'},
-  {id:'p3',name:'Jon Rahm'},{id:'p4',name:'Tommy Fleetwood'},
-  {id:'p5',name:'Ludvig Aberg'},{id:'p6',name:'Xander Schauffele'},
-  {id:'p7',name:'Collin Morikawa'},{id:'p8',name:'Brooks Koepka'},
-  {id:'p9',name:'Patrick Cantlay'},{id:'p10',name:'Viktor Hovland'},
-  {id:'p11',name:'Justin Thomas'},{id:'p12',name:'Bryson DeChambeau'},
-  {id:'p13',name:'Jordan Spieth'},{id:'p14',name:'Patrick Reed'},
-  {id:'p15',name:'Hideki Matsuyama'},{id:'p16',name:'Shane Lowry'},
-  {id:'p17',name:'Cameron Young'},{id:'p18',name:'Chris Gotterup'},
-  {id:'p19',name:'Russell Henley'},{id:'p20',name:'Justin Rose'},
+  {id:'p29',name:'Ludvig Aberg'},         {id:'p30',name:'Tommy Fleetwood'},
+  {id:'p31',name:'Cameron Young'},        {id:'p32',name:'Viktor Hovland'},
+  {id:'p33',name:'Patrick Cantlay'},      {id:'p34',name:'Justin Rose'},
+  {id:'p35',name:'Tyrrell Hatton'},       {id:'p36',name:'Robert MacIntyre'},
+  {id:'p37',name:'Shane Lowry'},          {id:'p38',name:'Min Woo Lee'},
+  {id:'p39',name:'Chris Gotterup'},       {id:'p40',name:'Nicolai Hojgaard'},
   // ── Mid-tier ──
-  {id:'p21',name:'Jake Knapp'},{id:'p22',name:'Maverick McNealy'},
-  {id:'p23',name:'Sungjae Im'},{id:'p24',name:'Max Homa'},
-  {id:'p25',name:'Wyndham Clark'},{id:'p26',name:'Jason Day'},
-  {id:'p27',name:'Sam Burns'},{id:'p28',name:'Keegan Bradley'},
-  {id:'p29',name:'Tyrrell Hatton'},{id:'p30',name:'Nick Taylor'},
-  {id:'p31',name:'Alex Noren'},{id:'p32',name:'Corey Conners'},
-  {id:'p33',name:'Brian Harman'},{id:'p34',name:'Kurt Kitayama'},
-  {id:'p35',name:'Matt Fitzpatrick'},{id:'p36',name:'Harris English'},
-  {id:'p37',name:'Akshay Bhatia'},{id:'p38',name:'Haotong Li'},
-  {id:'p39',name:'Ryan Fox'},{id:'p40',name:'Sam Stevens'},
-  {id:'p41',name:'Max Greyserman'},{id:'p42',name:'Carlos Ortiz'},
-  {id:'p43',name:'Si Woo Kim'},{id:'p44',name:'Nicolai Hojgaard'},
-  {id:'p45',name:'Min Woo Lee'},{id:'p46',name:'Adam Scott'},
-  {id:'p47',name:'J.J. Spaun'},{id:'p48',name:'Gary Woodland'},
-  {id:'p49',name:'Matt McCarty'},{id:'p50',name:'Daniel Berger'},
-  {id:'p51',name:'Johnny Keefer'},{id:'p52',name:'Nico Echavarria'},
-  {id:'p53',name:'Dustin Johnson'},{id:'p54',name:'Sergio Garcia'},
-  {id:'p55',name:'Kristoffer Reitan'},{id:'p56',name:'Ben Griffin'},
-  {id:'p57',name:'Jacob Bridgeman'},{id:'p58',name:'Michael Brennan'},
-  {id:'p59',name:'Casey Jarvis'},{id:'p60',name:'Ethan Fang'},
-  // ── Past champions & veterans ──
-  {id:'p61',name:'Zach Johnson'},{id:'p62',name:'Fred Couples'},
-  {id:'p63',name:'Angel Cabrera'},{id:'p64',name:'Jose Maria Olazabal'},
-  {id:'p65',name:'Charl Schwartzel'},{id:'p66',name:'Trevor Immelman'},
-  {id:'p67',name:'Sandy Lyle'},{id:'p68',name:'Bernhard Langer'},
-  {id:'p69',name:'Larry Mize'},{id:'p70',name:"Mark O'Meara"},
-  // ── Others in field ──
-  {id:'p71',name:'Kevin Yu'},{id:'p72',name:'Sepp Straka'},
-  {id:'p73',name:'Tom Kim'},{id:'p74',name:'Billy Horschel'},
-  {id:'p75',name:'Tony Finau'},{id:'p76',name:'Sahith Theegala'},
-  {id:'p77',name:'Denny McCarthy'},{id:'p78',name:'Brian Campbell'},
-  {id:'p79',name:'Chandler Phillips'},{id:'p80',name:'Ryo Hisatsune'},
-  {id:'p81',name:'Robert MacIntyre'},{id:'p82',name:'Andrew Putnam'},
-  {id:'p83',name:'Davis Thompson'},{id:'p84',name:'S.H. Kim'},
-  {id:'p85',name:'Si Woo Kim'},{id:'p86',name:'Bud Cauley'},
-  {id:'p87',name:'Lucas Glover'},{id:'p88',name:'Rickie Fowler'},
-  {id:'p89',name:'Will Zalatoris'},{id:'p90',name:'Nick Dunlap'},
-  {id:'p91',name:'Tom Hoge'},
+  {id:'p41',name:'Si Woo Kim'},           {id:'p42',name:'Jason Day'},
+  {id:'p43',name:'Sungjae Im'},           {id:'p44',name:'Max Homa'},
+  {id:'p45',name:'Corey Conners'},        {id:'p46',name:'Sam Burns'},
+  {id:'p47',name:'Nick Taylor'},          {id:'p48',name:'Keegan Bradley'},
+  {id:'p49',name:'Gary Woodland'},        {id:'p50',name:'Jake Knapp'},
+  {id:'p51',name:'Sepp Straka'},          {id:'p52',name:'Harris English'},
+  {id:'p53',name:'Kurt Kitayama'},        {id:'p54',name:'Alex Noren'},
+  {id:'p55',name:'Russell Henley'},       {id:'p56',name:'Haotong Li'},
+  {id:'p57',name:'Sam Stevens'},          {id:'p58',name:'Ryan Fox'},
+  {id:'p59',name:'Ben Griffin'},          {id:'p60',name:'Carlos Ortiz'},
+  {id:'p61',name:'Akshay Bhatia'},        {id:'p62',name:'Maverick McNealy'},
+  {id:'p63',name:'Daniel Berger'},        {id:'p64',name:'Matt McCarty'},
+  {id:'p65',name:'Kristoffer Reitan'},    {id:'p66',name:'Jacob Bridgeman'},
+  {id:'p67',name:'Michael Brennan'},      {id:'p68',name:'Ryan Gerard'},
+  {id:'p69',name:'Max Greyserman'},       {id:'p70',name:'Rasmus Hojgaard'},
+  {id:'p71',name:'Harry Hall'},           {id:'p72',name:'John Keefer'},
+  {id:'p73',name:'Casey Jarvis'},         {id:'p74',name:'Aldrich Potgieter'},
+  {id:'p75',name:'Davis Riley'},          {id:'p76',name:'Andrew Novak'},
+  {id:'p77',name:'Brian Campbell'},       {id:'p78',name:'Nicolas Echavarria'},
+  {id:'p79',name:'Samuel Stevens'},       {id:'p80',name:'Marco Penge'},
+  {id:'p81',name:'Aaron Rai'},            {id:'p82',name:'Sami Valimaki'},
+  {id:'p83',name:'Michael Kim'},          {id:'p84',name:'Tom McKibbin'},
+  {id:'p85',name:'Naoyuki Kataoka'},      {id:'p86',name:'Rasmus Neergaard-Petersen'},
+  {id:'p87',name:'Tom McKibbin'},         {id:'p88',name:'Aldrich Potgieter'},
+  // ── Amateurs ──
+  {id:'p89',name:'Mason Howell (a)'},     {id:'p90',name:'Jackson Herrington (a)'},
+  {id:'p91',name:'Ethan Fang (a)'},
 ];
 const PROS_MAP = Object.fromEntries(PROS.map(p => [p.id, p]));
 
@@ -64,7 +65,7 @@ const HOLE_HCP       = [3,15,17,1,13,7,11,5,9, 16,2,14,12,8,10,4,6,18];
 const HOLE_YDS       = [356,150,262,156,158,397,150,168,301, 143,333,97,154,260,129,321,149,118];
 const COURSE_RATING  = 59.6;
 const COURSE_SLOPE   = 100;
-const STORAGE_KEY    = 'scramble_golf_v6';   // local cache key
+const STORAGE_KEY    = 'scramble_golf_v7';   // local cache key
 const FS_DOC         = 'tournament/state';    // Firestore path
 const ESPN_API = 'https://site.web.api.espn.com/apis/site/v2/sports/golf/leaderboard?league=pga';
 
@@ -1759,7 +1760,7 @@ function StatsView({ state }) {
 
 // ── MAIN APP ───────────────────────────────────────────────────────────────
 export default function App() {
-  const [state, setState] = useState(()=>loadLocal()||INIT);
+  const [state, setState] = useState(()=>{ const s=loadLocal(); return s ? {...s, par:DEFAULT_PAR} : INIT; });
   const [view, setView] = useState('leaderboard');
   const [adminMode, setAdminMode] = useState(false);
   const [syncStatus, setSyncStatus] = useState('loading'); // 'loading'|'live'|'offline'
@@ -1782,10 +1783,11 @@ export default function App() {
       (snap) => {
         if (snap.exists()) {
           const remote = snap.data().state;
-          // Only update if we're not mid-save (prevents echo)
+          // Always enforce current course par & yardage — never use stale Firestore values
+          const merged = { ...remote, par: DEFAULT_PAR };
           if (!isSaving.current) {
-            setState(remote);
-            saveLocal(remote);
+            setState(merged);
+            saveLocal(merged);
           }
         }
         setSyncStatus('live');

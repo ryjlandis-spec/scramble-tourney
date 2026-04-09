@@ -65,7 +65,7 @@ const HOLE_HCP       = [3,15,17,1,13,7,11,5,9, 16,2,14,12,8,10,4,6,18];
 const HOLE_YDS       = [356,150,262,156,158,397,150,168,301, 143,333,97,154,260,129,321,149,118];
 const COURSE_RATING  = 59.6;
 const COURSE_SLOPE   = 100;
-const STORAGE_KEY    = 'scramble_golf_v7';   // local cache key
+const STORAGE_KEY    = 'scramble_golf_v8';   // local cache key
 const FS_DOC         = 'tournament/state';    // Firestore path
 const ESPN_API = 'https://site.web.api.espn.com/apis/site/v2/sports/golf/leaderboard?league=pga';
 
@@ -219,11 +219,10 @@ async function loadFromFirestore() {
     return snap.exists() ? snap.data().state : null;
   } catch(e) { console.warn('Firestore load failed:', e); return null; }
 }
-async function saveToFirestore(s) {
-  // Strip any undefined values Firestore can't handle
+async function saveToFirestore(s, ts) {
   const clean = JSON.parse(JSON.stringify(s));
   const [col, docId] = FS_DOC.split('/');
-  await setDoc(doc(db, col, docId), { state: clean, updatedAt: Date.now() });
+  await setDoc(doc(db, col, docId), { state: clean, updatedAt: ts || Date.now() });
 }
 
 // ── HELPERS ────────────────────────────────────────────────────────────────
@@ -538,13 +537,14 @@ function SetupView({ state, setState, adminMode, setSyncStatus, saveToFirestore 
             <button className="btn sec" style={{marginTop:4}} onClick={async ()=>{
               setSyncStatus('syncing');
               try {
-                await saveToFirestore(state);
+                const ts = Date.now();
+                await saveToFirestore(state, ts);
                 setSyncStatus('live');
-                alert('Saved to cloud successfully!');
+                alert('Saved to cloud! ✓\n\nAll devices will update within seconds.');
               } catch(e) {
                 const msg = e?.code || e?.message || 'unknown error';
                 setSyncStatus('error:' + msg);
-                alert('Save FAILED: ' + msg + '\n\nCheck your Firestore rules in the Firebase console.');
+                alert('Save failed: ' + msg + '\n\nCheck Firestore Rules tab in Firebase console.');
               }
             }}>
               ☁️ Force Save to Cloud
@@ -1789,6 +1789,7 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState('loading'); // 'loading'|'live'|'offline'
   const isSaving = useRef(false);
   const pendingSave = useRef(null);
+  const localUpdatedAt = useRef(loadLocal()?._updatedAt || 0);
 
   // ── Inject CSS once ──────────────────────────────────────────────────
   useEffect(()=>{
@@ -1804,16 +1805,23 @@ export default function App() {
     const unsub = onSnapshot(
       doc(db, col, docId),
       (snap) => {
-        if (snap.exists()) {
-          const remote = snap.data().state;
-          // Always enforce current course par & yardage — never use stale Firestore values
-          const merged = { ...remote, par: DEFAULT_PAR };
-          if (!isSaving.current) {
-            setState(merged);
-            saveLocal(merged);
-          }
-        }
         setSyncStatus('live');
+        if (!snap.exists()) return;
+
+        const remoteUpdatedAt = snap.data().updatedAt || 0;
+        const remote = snap.data().state;
+
+        // If we're mid-save, skip — this is our own echo
+        if (isSaving.current) return;
+
+        // Only accept remote if it's strictly newer than what we last saved
+        if (remoteUpdatedAt <= localUpdatedAt.current) return;
+
+        // Remote is newer — accept it
+        const merged = { ...remote, par: DEFAULT_PAR };
+        setState(merged);
+        saveLocal(merged);
+        localUpdatedAt.current = remoteUpdatedAt;
       },
       (err) => {
         console.warn('Firestore listener error:', err);

@@ -2218,12 +2218,11 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // lastFirestoreState: JSON string of the last state we received FROM Firestore.
-  // We compare current state to this before saving — if they match, the change
-  // came from Firestore and we skip the save to prevent echo loops.
-  // Initialized to INIT so a React Strict Mode double-mount never writes the
-  // empty initial state back to Firestore on first render.
-  const lastFirestoreState = useRef(JSON.stringify(INIT));
+  // lastFirestoreState stores state WITHOUT proHoles (proHoles is local-only and
+  // never in Firestore). The save effect also excludes proHoles from its comparison,
+  // so both sides must be consistent or they'll never match and cause infinite write loops.
+  const { proHoles: _initPh, ...initWithoutHoles } = INIT;
+  const lastFirestoreState = useRef(JSON.stringify(initWithoutHoles));
 
   // userEditedAt: timestamp of last local edit. We refuse Firestore updates
   // for 5 seconds after a local edit so typing doesn't get wiped mid-keystroke.
@@ -2274,12 +2273,15 @@ export default function App() {
         };
         const mergedStr = JSON.stringify(merged);
 
-        // Use stateRef (not stale closure `state`) so this comparison is always fresh
-        const currentStr = JSON.stringify(stateRef.current);
-        if (mergedStr === currentStr) return;
+        // Compare without proHoles on both sides (proHoles is local-only)
+        const { proHoles: _mPh, ...mergedWithoutHoles } = merged;
+        const { proHoles: _cPh, ...currentWithoutHoles } = stateRef.current;
+        if (JSON.stringify(mergedWithoutHoles) === JSON.stringify(currentWithoutHoles)) return;
 
-        // Accept the Firestore data — record it so save effect knows to skip
-        lastFirestoreState.current = mergedStr;
+        // Accept the Firestore data — record it (without proHoles) so save effect
+        // comparison is consistent: both sides exclude proHoles.
+        const { proHoles: _fsPh, ...mergedWithoutHoles } = merged;
+        lastFirestoreState.current = JSON.stringify(mergedWithoutHoles);
         setState(merged);
         saveLocal(merged);
         // Firestore round-trip confirmed — mark as live

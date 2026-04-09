@@ -214,6 +214,34 @@ function saveLocal(s) {
 }
 
 
+// ── FIRESTORE SERIALIZATION ────────────────────────────────────────────────
+// Firestore forbids nested arrays (array-of-arrays). Each team's `shots` field
+// is Array(18) where every element is itself an array of position objects —
+// exactly the pattern Firestore rejects. We convert shots to a plain object
+// keyed by hole index ("0"…"17") before writing, and back to an array on read.
+
+function toFirestore(state) {
+  return {
+    ...state,
+    teams: (state.teams || []).map(t => ({
+      ...t,
+      shots: Object.fromEntries(
+        (t.shots || []).map((hole, i) => [String(i), hole || []])
+      ),
+    })),
+  };
+}
+
+function fromFirestore(state) {
+  return {
+    ...state,
+    teams: (state.teams || []).map(t => ({
+      ...t,
+      shots: Array.from({ length: 18 }, (_, i) => t.shots?.[String(i)] || []),
+    })),
+  };
+}
+
 // ── HELPERS ────────────────────────────────────────────────────────────────
 function fmt(n) {
   if (n === null || n === undefined) return { text:'--', cls:'dim' };
@@ -526,7 +554,7 @@ function SetupView({ state, setState, adminMode, setSyncStatus }) {
             <button className="btn sec" style={{marginTop:4}} onClick={async ()=>{
               setSyncStatus('syncing');
               try {
-                const clean = JSON.parse(JSON.stringify(state));
+                const clean = toFirestore(JSON.parse(JSON.stringify(state)));
                 const [col, docId] = FS_DOC.split('/');
                 await setDoc(doc(db, col, docId), { state: clean, updatedAt: Date.now() });
                 setSyncStatus('live');
@@ -1822,7 +1850,7 @@ export default function App() {
           prev === 'connecting' || prev === 'offline' ? 'live' : prev
         );
         if (!snap.exists()) return;
-        const remote = snap.data().state;
+        const remote = fromFirestore(snap.data().state);
         if (!remote) return;
 
         // Don't overwrite local state while user is actively editing
@@ -1874,7 +1902,7 @@ export default function App() {
     saveTimer.current = setTimeout(async () => {
       setSyncStatus('syncing');
       try {
-        const clean = JSON.parse(stateStr);
+        const clean = toFirestore(JSON.parse(stateStr));
         const [col, docId] = FS_DOC.split('/');
         await setDoc(doc(db, col, docId), { state: clean, updatedAt: Date.now() });
         // Record that this state is now what Firestore has

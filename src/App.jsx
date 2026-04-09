@@ -65,7 +65,7 @@ const HOLE_HCP       = [3,15,17,1,13,7,11,5,9, 16,2,14,12,8,10,4,6,18];
 const HOLE_YDS       = [356,150,262,156,158,397,150,168,301, 143,333,97,154,260,129,321,149,118];
 const COURSE_RATING  = 59.6;
 const COURSE_SLOPE   = 100;
-const STORAGE_KEY    = 'scramble_golf_v8';   // local cache key
+const STORAGE_KEY    = 'scramble_golf_v9';   // local cache key
 const FS_DOC         = 'tournament/state';    // Firestore path
 const ESPN_API = 'https://site.web.api.espn.com/apis/site/v2/sports/golf/leaderboard?league=pga';
 
@@ -408,7 +408,7 @@ html,body{background:var(--bg);color:var(--cream);font-family:'Inter',sans-serif
 
 // ── VIEWS ──────────────────────────────────────────────────────────────────
 
-function SetupView({ state, setState, adminMode, setSyncStatus, saveToFirestore }) {
+function SetupView({ state, setState, adminMode, setSyncStatus }) {
   const { tournament, teams, proScores } = state;
   const [tab, setTab] = useState('tournament');
   const [newTeam, setNewTeam] = useState({ name:'', player1:'', player2:'', hcp1:0, hcp2:0 });
@@ -537,14 +537,16 @@ function SetupView({ state, setState, adminMode, setSyncStatus, saveToFirestore 
             <button className="btn sec" style={{marginTop:4}} onClick={async ()=>{
               setSyncStatus('syncing');
               try {
-                const ts = Date.now();
-                await saveToFirestore(state, ts);
+                const clean = JSON.parse(JSON.stringify(state));
+                const {doc: fsDoc, setDoc: fsSet} = await import('firebase/firestore');
+                const {db: fsDb} = await import('../firebase');
+                await fsSet(fsDoc(fsDb,'tournament','state'),{state:clean,updatedAt:Date.now()});
                 setSyncStatus('live');
-                alert('Saved to cloud! ✓\n\nAll devices will update within seconds.');
+                alert('Saved! ✓ All devices will update within seconds.');
               } catch(e) {
-                const msg = e?.code || e?.message || 'unknown error';
+                const msg = e?.code || e?.message || 'unknown';
                 setSyncStatus('error:' + msg);
-                alert('Save failed: ' + msg + '\n\nCheck Firestore Rules tab in Firebase console.');
+                alert('Save failed: ' + msg);
               }
             }}>
               ☁️ Force Save to Cloud
@@ -1783,120 +1785,122 @@ function StatsView({ state }) {
 
 // ── MAIN APP ───────────────────────────────────────────────────────────────
 export default function App() {
-  const [state, setState] = useState(()=>{ const s=loadLocal(); return s ? {...s, par:DEFAULT_PAR} : INIT; });
+  const [state, setState] = useState(() => {
+    const s = loadLocal();
+    return s ? { ...s, par: DEFAULT_PAR } : INIT;
+  });
   const [view, setView] = useState('leaderboard');
   const [adminMode, setAdminMode] = useState(false);
-  const [syncStatus, setSyncStatus] = useState('loading'); // 'loading'|'live'|'offline'
-  const isSaving = useRef(false);
-  const pendingSave = useRef(null);
-  const localUpdatedAt = useRef(loadLocal()?._updatedAt || 0);
+  const [syncStatus, setSyncStatus] = useState('connecting');
+  const fromFirestore = useRef(false);
+  const saveTimer = useRef(null);
 
-  // ── Inject CSS once ──────────────────────────────────────────────────
-  useEffect(()=>{
-    const el=document.createElement('style');
-    el.textContent=CSS;
+  // Inject CSS
+  useEffect(() => {
+    const el = document.createElement('style');
+    el.textContent = CSS;
     document.head.appendChild(el);
-    return ()=>document.head.removeChild(el);
-  },[]);
+    return () => document.head.removeChild(el);
+  }, []);
 
-  // ── Real-time Firestore listener ─────────────────────────────────────
-  useEffect(()=>{
+  // Real-time Firestore listener — any change from Firestore updates all devices
+  useEffect(() => {
     const [col, docId] = FS_DOC.split('/');
     const unsub = onSnapshot(
       doc(db, col, docId),
       (snap) => {
         setSyncStatus('live');
         if (!snap.exists()) return;
-
-        const remoteUpdatedAt = snap.data().updatedAt || 0;
         const remote = snap.data().state;
-
-        // If we're mid-save, skip — this is our own echo
-        if (isSaving.current) return;
-
-        // Only accept remote if it's strictly newer than what we last saved
-        if (remoteUpdatedAt <= localUpdatedAt.current) return;
-
-        // Remote is newer — accept it
+        if (!remote) return;
         const merged = { ...remote, par: DEFAULT_PAR };
+        fromFirestore.current = true;
         setState(merged);
         saveLocal(merged);
-        localUpdatedAt.current = remoteUpdatedAt;
       },
       (err) => {
-        console.warn('Firestore listener error:', err);
+        console.warn('Firestore error:', err);
         setSyncStatus('offline');
       }
     );
     return () => unsub();
   }, []);
 
-  // ── Debounced Firestore save on every state change ───────────────────
-  useEffect(()=>{
+  // Save local changes to Firestore (debounced 1s, skip if change came from Firestore)
+  useEffect(() => {
     saveLocal(state);
-    // Debounce: wait 800ms after last change before writing to Firestore
-    if (pendingSave.current) clearTimeout(pendingSave.current);
-    pendingSave.current = setTimeout(async () => {
-      isSaving.current = true;
-      await saveToFirestore(state);
-      setTimeout(() => { isSaving.current = false; }, 500);
-    }, 800);
+    if (fromFirestore.current) {
+      fromFirestore.current = false;
+      return;
+    }
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      setSyncStatus('syncing');
+      try {
+        const clean = JSON.parse(JSON.stringify(state));
+        const [col, docId] = FS_DOC.split('/');
+        await setDoc(doc(db, col, docId), { state: clean, updatedAt: Date.now() });
+        setSyncStatus('live');
+      } catch (e) {
+        console.error('Firestore save failed:', e);
+        setSyncStatus('error:' + (e?.code || e?.message || 'unknown'));
+      }
+    }, 1000);
   }, [state]);
 
-  const {tournament} = state;
+  const { tournament } = state;
 
   const TABS = [
-    {id:'leaderboard',label:'Board',ico:'🏆'},
-    {id:'skins',label:'Skins',ico:'💰'},
-    {id:'scores',label:'Scores',ico:'✏️'},
-    {id:'stats',label:'Stats',ico:'📈'},
-    {id:'draft',label:'Draft',ico:'🎯'},
-    {id:'setup',label:'Setup',ico:'⚙️'},
+    { id: 'leaderboard', label: 'Board', ico: '🏆' },
+    { id: 'skins',       label: 'Skins', ico: '💰' },
+    { id: 'scores',      label: 'Scores', ico: '✏️' },
+    { id: 'stats',       label: 'Stats', ico: '📈' },
+    { id: 'draft',       label: 'Draft', ico: '🎯' },
+    { id: 'setup',       label: 'Setup', ico: '⚙️' },
   ];
+
+  const syncColor =
+    syncStatus === 'live'            ? 'var(--green)'  :
+    syncStatus === 'offline'         ? 'var(--red)'    :
+    syncStatus === 'syncing'         ? 'var(--gold)'   :
+    syncStatus.startsWith('error:')  ? 'var(--red)'    : 'var(--muted)';
+
+  const syncLabel =
+    syncStatus === 'live'            ? '● live'     :
+    syncStatus === 'offline'         ? '● offline'  :
+    syncStatus === 'syncing'         ? '● saving'   :
+    syncStatus.startsWith('error:')  ? '⚠ ' + syncStatus.replace('error:', '') :
+    '● connecting';
 
   return (
     <div className="app">
-      {/* Header */}
       <div className="hdr">
         <div className="hdr-left">
-          <h1>{tournament.name||'Golf Tournament'}</h1>
+          <h1>{tournament.name || 'Golf Tournament'}</h1>
           <p>
-            {tournament.pgaEvent ? tournament.pgaEvent : 'No PGA event set'}
+            {tournament.pgaEvent || 'No PGA event set'}
             {tournament.date ? ` · ${tournament.date}` : ''}
             {' '}
-            <span style={{
-              fontSize:9, fontFamily:'DM Mono,monospace',
-              color: syncStatus==='live'             ? 'var(--green)'
-                   : syncStatus==='offline'           ? 'var(--red)'
-                   : syncStatus.startsWith('error:')  ? 'var(--red)'
-                   : syncStatus==='syncing'            ? 'var(--gold)'
-                   : 'var(--muted)'
-            }}>
-              {syncStatus==='live'              ? '● live'
-               : syncStatus==='offline'          ? '● offline'
-               : syncStatus==='syncing'          ? '● saving'
-               : syncStatus.startsWith('error:') ? '⚠ ' + syncStatus.replace('error:','')
-               : '● connecting'}
+            <span style={{ fontSize: 9, fontFamily: 'DM Mono,monospace', color: syncColor }}>
+              {syncLabel}
             </span>
           </p>
         </div>
-        <button className="btn sm sec" style={{width:'auto'}} onClick={()=>setAdminMode(a=>!a)}>
+        <button className="btn sm sec" style={{ width: 'auto' }} onClick={() => setAdminMode(a => !a)}>
           {adminMode ? '🔓 Admin' : '🔒 Admin'}
         </button>
       </div>
 
-      {/* Views */}
-      {view==='setup'       && <SetupView      state={state} setState={setState} adminMode={adminMode} setSyncStatus={setSyncStatus} saveToFirestore={saveToFirestore} />}
-      {view==='draft'       && <DraftView      state={state} setState={setState} />}
-      {view==='scores'      && <ScoresView     state={state} setState={setState} />}
-      {view==='leaderboard' && <LeaderboardView state={state} />}
-      {view==='skins'       && <SkinsView      state={state} />}
-      {view==='stats'       && <StatsView      state={state} />}
+      {view === 'setup'       && <SetupView       state={state} setState={setState} adminMode={adminMode} setSyncStatus={setSyncStatus} />}
+      {view === 'draft'       && <DraftView        state={state} setState={setState} />}
+      {view === 'scores'      && <ScoresView       state={state} setState={setState} />}
+      {view === 'leaderboard' && <LeaderboardView  state={state} />}
+      {view === 'skins'       && <SkinsView        state={state} />}
+      {view === 'stats'       && <StatsView        state={state} />}
 
-      {/* Bottom nav */}
       <nav className="bnav">
-        {TABS.map(t=>(
-          <button key={t.id} className={`nb ${view===t.id?'on':''}`} onClick={()=>setView(t.id)}>
+        {TABS.map(t => (
+          <button key={t.id} className={`nb ${view === t.id ? 'on' : ''}`} onClick={() => setView(t.id)}>
             <span className="ico">{t.ico}</span>
             {t.label}
           </button>

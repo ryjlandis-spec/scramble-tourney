@@ -1789,13 +1789,17 @@ export default function App() {
     const s = loadLocal();
     return s ? { ...s, par: DEFAULT_PAR } : INIT;
   });
-  const [view, setView] = useState('leaderboard');
+  const [view, setView]       = useState('leaderboard');
   const [adminMode, setAdminMode] = useState(false);
   const [syncStatus, setSyncStatus] = useState('connecting');
-  const fromFirestore = useRef(false);
-  const saveTimer = useRef(null);
 
-  // Inject CSS
+  // Track when the user last made a local edit.
+  // We will NOT accept Firestore updates if the user edited within the last 6s —
+  // this prevents the snapshot from wiping typing before the save debounce fires.
+  const userEditedAt = useRef(0);
+  const saveTimer    = useRef(null);
+
+  // Inject CSS once
   useEffect(() => {
     const el = document.createElement('style');
     el.textContent = CSS;
@@ -1803,7 +1807,7 @@ export default function App() {
     return () => document.head.removeChild(el);
   }, []);
 
-  // Real-time Firestore listener — any change from Firestore updates all devices
+  // Real-time Firestore listener
   useEffect(() => {
     const [col, docId] = FS_DOC.split('/');
     const unsub = onSnapshot(
@@ -1813,8 +1817,11 @@ export default function App() {
         if (!snap.exists()) return;
         const remote = snap.data().state;
         if (!remote) return;
+
+        // If the user has edited recently, skip — their save is in flight
+        if (Date.now() - userEditedAt.current < 6000) return;
+
         const merged = { ...remote, par: DEFAULT_PAR };
-        fromFirestore.current = true;
         setState(merged);
         saveLocal(merged);
       },
@@ -1826,13 +1833,10 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  // Save local changes to Firestore (debounced 1s, skip if change came from Firestore)
+  // Debounced save to Firestore on every local state change
   useEffect(() => {
     saveLocal(state);
-    if (fromFirestore.current) {
-      fromFirestore.current = false;
-      return;
-    }
+    userEditedAt.current = Date.now();             // mark that user just edited
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       setSyncStatus('syncing');
@@ -1841,35 +1845,36 @@ export default function App() {
         const [col, docId] = FS_DOC.split('/');
         await setDoc(doc(db, col, docId), { state: clean, updatedAt: Date.now() });
         setSyncStatus('live');
+        userEditedAt.current = 0; // allow Firestore updates again after successful save
       } catch (e) {
         console.error('Firestore save failed:', e);
         setSyncStatus('error:' + (e?.code || e?.message || 'unknown'));
       }
-    }, 1000);
+    }, 1500);
   }, [state]);
 
   const { tournament } = state;
 
   const TABS = [
-    { id: 'leaderboard', label: 'Board', ico: '🏆' },
-    { id: 'skins',       label: 'Skins', ico: '💰' },
+    { id: 'leaderboard', label: 'Board',  ico: '🏆' },
+    { id: 'skins',       label: 'Skins',  ico: '💰' },
     { id: 'scores',      label: 'Scores', ico: '✏️' },
-    { id: 'stats',       label: 'Stats', ico: '📈' },
-    { id: 'draft',       label: 'Draft', ico: '🎯' },
-    { id: 'setup',       label: 'Setup', ico: '⚙️' },
+    { id: 'stats',       label: 'Stats',  ico: '📈' },
+    { id: 'draft',       label: 'Draft',  ico: '🎯' },
+    { id: 'setup',       label: 'Setup',  ico: '⚙️' },
   ];
 
   const syncColor =
-    syncStatus === 'live'            ? 'var(--green)'  :
-    syncStatus === 'offline'         ? 'var(--red)'    :
-    syncStatus === 'syncing'         ? 'var(--gold)'   :
-    syncStatus.startsWith('error:')  ? 'var(--red)'    : 'var(--muted)';
+    syncStatus === 'live'           ? 'var(--green)'  :
+    syncStatus === 'offline'        ? 'var(--red)'    :
+    syncStatus === 'syncing'        ? 'var(--gold)'   :
+    syncStatus.startsWith('error:') ? 'var(--red)'    : 'var(--muted)';
 
   const syncLabel =
-    syncStatus === 'live'            ? '● live'     :
-    syncStatus === 'offline'         ? '● offline'  :
-    syncStatus === 'syncing'         ? '● saving'   :
-    syncStatus.startsWith('error:')  ? '⚠ ' + syncStatus.replace('error:', '') :
+    syncStatus === 'live'           ? '● live'    :
+    syncStatus === 'offline'        ? '● offline' :
+    syncStatus === 'syncing'        ? '● saving'  :
+    syncStatus.startsWith('error:') ? '⚠ ' + syncStatus.replace('error:', '') :
     '● connecting';
 
   return (
@@ -1891,12 +1896,12 @@ export default function App() {
         </button>
       </div>
 
-      {view === 'setup'       && <SetupView       state={state} setState={setState} adminMode={adminMode} setSyncStatus={setSyncStatus} />}
-      {view === 'draft'       && <DraftView        state={state} setState={setState} />}
-      {view === 'scores'      && <ScoresView       state={state} setState={setState} />}
-      {view === 'leaderboard' && <LeaderboardView  state={state} />}
-      {view === 'skins'       && <SkinsView        state={state} />}
-      {view === 'stats'       && <StatsView        state={state} />}
+      {view === 'setup'       && <SetupView      state={state} setState={setState} adminMode={adminMode} setSyncStatus={setSyncStatus} />}
+      {view === 'draft'       && <DraftView       state={state} setState={setState} />}
+      {view === 'scores'      && <ScoresView      state={state} setState={setState} />}
+      {view === 'leaderboard' && <LeaderboardView state={state} />}
+      {view === 'skins'       && <SkinsView       state={state} />}
+      {view === 'stats'       && <StatsView       state={state} />}
 
       <nav className="bnav">
         {TABS.map(t => (

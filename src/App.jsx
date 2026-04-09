@@ -72,7 +72,7 @@ const ADMIN_PASSWORD = 'Eagle47';
 
 // Normalize a name for fuzzy matching (last name + first initial)
 function normalizeName(n) {
-  return n.toLowerCase().replace(/[^a-z\s]/g, '').trim();
+  return n.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z\s]/g, '').trim();
 }
 function namesMatch(espnName, ourName) {
   const a = normalizeName(espnName);
@@ -259,7 +259,7 @@ function fmt(n) {
   return { text:`+${n}`, cls:'over' };
 }
 
-function calcTeam(team, proScores, tournament) {
+function calcTeam(team, proScores, tournament, proHoles = {}) {
   const entered = team.scores.filter(s => s !== '' && s !== null && s !== undefined);
   const n = entered.length;
   const scrambleStrokes = entered.reduce((s,v) => s + Number(v), 0);
@@ -267,14 +267,26 @@ function calcTeam(team, proScores, tournament) {
   const scrambleToPar = n > 0 ? scrambleStrokes - scramblePar : null;
 
   const proCount = tournament?.proCount || 1;
+  const hasHolesData = Object.keys(proHoles).length > 0;
+
   const pVals = (team.proIds || [])
+    .filter(id => {
+      // If ESPN has synced holes data, only count pros who've played at least 1 hole.
+      // If no holes data yet (pre-tournament / no sync), include all drafted pros.
+      if (!hasHolesData) return true;
+      return (proHoles[id] ?? 0) > 0;
+    })
     .map(id => proScores[id] !== undefined ? proScores[id] : 0)
     .sort((a,b) => a - b)
     .slice(0, proCount);
   const proTotal = pVals.length === proCount ? pVals.reduce((a,b)=>a+b,0) : null;
 
-  const combined = scrambleToPar !== null && proTotal !== null
-    ? scrambleToPar + proTotal : scrambleToPar;
+  // Pre-round: show proTotal alone so teams appear on the leaderboard before scramble starts.
+  // During round: combine scramble + pro scores.
+  const combined =
+    scrambleToPar !== null && proTotal !== null ? scrambleToPar + proTotal :
+    scrambleToPar !== null ? scrambleToPar :
+    proTotal;
 
   const hcp = teamHandicap(team.hcp1||0, team.hcp2||0);
   const netCombined = combined !== null ? combined - hcp : null;
@@ -735,10 +747,13 @@ function ProsView({ state }) {
   });
 
   // ── Teams tab ──────────────────────────────────────────────────────────────
+  const hasHolesData = Object.keys(proHoles).length > 0;
+
   const ranked = [...teams]
     .map(t => {
       const sorted = [...(t.proIds||[])].sort((a,b) => (proScores[a]??0) - (proScores[b]??0));
-      const top = sorted.slice(0, proCount);
+      const eligible = sorted.filter(id => !hasHolesData || (proHoles[id] ?? 0) > 0);
+      const top = eligible.slice(0, proCount);
       const proTotal = top.length === proCount
         ? top.reduce((s,id) => s + (proScores[id]??0), 0)
         : null;
@@ -1461,14 +1476,14 @@ function ScoresView({ state, setState }) {
 }
 
 function LeaderboardView({ state }) {
-  const { teams, proScores, tournament } = state;
+  const { teams, proScores, proHoles = {}, tournament } = state;
   const proCount = tournament?.proCount || 1;
   const [open, setOpen] = useState(null);
   const [showNet, setShowNet] = useState(false);
 
   const ranked = useMemo(()=>{
     return teams
-      .map(t=>({team:t,...calcTeam(t,proScores)}))
+      .map(t=>({team:t,...calcTeam(t,proScores,tournament,proHoles)}))
       .sort((a,b)=>{
         if(a.combined===null&&b.combined===null) return 0;
         if(a.combined===null) return 1;

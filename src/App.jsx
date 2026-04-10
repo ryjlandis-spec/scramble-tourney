@@ -1294,9 +1294,8 @@ function ShotModal({ team, holeIndex, par, onClose, onSave }) {
   );
 }
 
-function ScoresView({ state, setState }) {
+function ScoresView({ state, setState, selTeam, setSelTeam }) {
   const { teams, par } = state;
-  const [selTeam, setSelTeam] = useState(teams[0]?.id||null);
   const [trackingHole, setTrackingHole] = useState(null);
   const [rulesOpen, setRulesOpen] = useState(false);
   useEffect(() => {
@@ -2216,6 +2215,7 @@ export default function App() {
   const [pwError, setPwError]     = useState(false);
   const [syncing, setSyncing]     = useState(false);
   const [syncMsg, setSyncMsg]     = useState('');
+  const [selScoreTeam, setSelScoreTeam] = useState('');
 
   async function syncESPN() {
     setSyncing(true); setSyncMsg('Fetching ESPN…');
@@ -2506,7 +2506,7 @@ export default function App() {
 
       {view === 'setup'       && <SetupView      state={state} setState={setState} adminMode={adminMode} setSyncStatus={setSyncStatus} syncESPN={syncESPN} syncing={syncing} syncMsg={syncMsg} />}
       {view === 'pros'        && <ProsView        state={state} />}
-      {view === 'scores'      && <ScoresView      state={state} setState={setState} />}
+      {view === 'scores'      && <ScoresView      state={state} setState={setState} selTeam={selScoreTeam} setSelTeam={setSelScoreTeam} />}
       {view === 'leaderboard' && <LeaderboardView state={state} />}
       {view === 'skins'       && <SkinsView       state={state} />}
       {view === 'stats'       && <StatsView       state={state} />}

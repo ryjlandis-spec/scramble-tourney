@@ -278,28 +278,17 @@ function calcTeam(team, proScores, tournament, proHoles = {}) {
   const scrambleToPar = n > 0 ? scrambleStrokes - scramblePar : null;
 
   const proCount = tournament?.proCount || 1;
-  const hasHolesData = Object.keys(proHoles).length > 0;
 
-  let proTotal;
-  if (hasHolesData) {
-    // Tournament is underway — include ALL drafted pros using their cumulative score.
-    // We can't distinguish "even par from round 1" from "hasn't played yet" once
-    // the tournament starts, so include everyone and take best-N.
-    const allVals = (team.proIds || [])
-      .map(id => proScores[id] ?? 0)
-      .sort((a, b) => a - b)
-      .slice(0, proCount);
-    proTotal = allVals.length === proCount
-      ? allVals.reduce((a, b) => a + b, 0)
-      : null;
-  } else {
-    // Pre-tournament (no ESPN data yet): use best-N of all drafted pros.
-    const pVals = (team.proIds || [])
-      .map(id => proScores[id] ?? 0)
-      .sort((a, b) => a - b)
-      .slice(0, proCount);
-    proTotal = pVals.length === proCount ? pVals.reduce((a, b) => a + b, 0) : null;
-  }
+  // Always take best-N of all drafted pros by cumulative score.
+  // proScores defaults to 0 for unsynced players which is correct pre-tournament.
+  // Once any scores are synced, this naturally reflects the leaderboard correctly.
+  const allVals = (team.proIds || [])
+    .map(id => proScores[id] ?? 0)
+    .sort((a, b) => a - b)
+    .slice(0, proCount);
+  const proTotal = allVals.length === proCount
+    ? allVals.reduce((a, b) => a + b, 0)
+    : null;
 
   // Pre-round: show proTotal alone so teams appear on the leaderboard before scramble starts.
   // During round: combine scramble + pro scores.
@@ -781,9 +770,7 @@ function ProsView({ state }) {
   const ranked = [...teams]
     .map(t => {
       const sorted = [...(t.proIds||[])].sort((a,b) => (proScores[a]??0) - (proScores[b]??0));
-      const eligible = hasHolesData ? sorted : sorted.filter(id =>
-        (proScores[id] ?? 0) !== 0 || (proHoles[id] ?? 0) > 0
-      );
+      const eligible = sorted;
       const top = eligible.slice(0, proCount);
       const proTotal = top.length === proCount
         ? top.reduce((s,id) => s + (proScores[id]??0), 0)

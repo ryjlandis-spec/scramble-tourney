@@ -318,14 +318,23 @@ function calcSkins(teams, par, skinsAmt) {
   const result = []; let carry = 0;
   for (let h = 0; h < 18; h++) {
     const entries = teams
-      .map(t => { const s = t.scores[h]; return (s !== '' && s !== null && s !== undefined) ? {team:t, score:Number(s)} : null; })
+      .map(t => {
+        const s = t.scores[h];
+        if (s === '' || s === null || s === undefined) return null;
+        const gross = Number(s);
+        // Strokes received: team gets a stroke on this hole if hole HCP index <= team HCP
+        const hcp = teamHandicap(t.hcp1||0, t.hcp2||0);
+        const strokes = HOLE_HCP[h] <= hcp ? 1 : 0;
+        const net = gross - strokes;
+        return { team: t, gross, net };
+      })
       .filter(Boolean);
     if (entries.length < 2) { result.push({hole:h+1,par:par[h],st:'pending',carry,pot:0}); continue; }
-    const min = Math.min(...entries.map(e=>e.score));
-    const wins = entries.filter(e=>e.score===min);
+    const min = Math.min(...entries.map(e=>e.net));
+    const wins = entries.filter(e=>e.net===min);
     const pot = (carry+1)*skinsAmt;
     if (wins.length === 1) {
-      result.push({hole:h+1,par:par[h],st:'won',winner:wins[0].team,score:min,carry,pot});
+      result.push({hole:h+1,par:par[h],st:'won',winner:wins[0].team,score:wins[0].gross,net:min,carry,pot});
       carry = 0;
     } else {
       result.push({hole:h+1,par:par[h],st:'tied',tied:wins.map(w=>w.team),score:min,carry,pot:0});
@@ -1669,7 +1678,9 @@ function SkinsView({ state }) {
                 {s.st==='won' && (
                   <>
                     <div style={{fontWeight:600,fontSize:13,color:'var(--green)'}}>{s.winner.name}</div>
-                    <div style={{fontSize:10,color:'var(--muted)'}}>Score {s.score}{s.carry>0?` · +${s.carry} carried`:''}</div>
+                    <div style={{fontSize:10,color:'var(--muted)'}}>
+                      Net {s.net} (gross {s.score}){s.carry>0?` · +${s.carry} carried`:''}
+                    </div>
                   </>
                 )}
                 {s.st==='tied' && (

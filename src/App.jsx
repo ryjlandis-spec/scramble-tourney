@@ -283,17 +283,14 @@ function calcTeam(team, proScores, tournament, proHoles = {}) {
   let proTotal;
   if (hasHolesData) {
     // Tournament is underway — include ALL drafted pros using their cumulative score.
-    // We no longer filter by today's holes because on day 2+, players who haven't
-    // teed off yet still have a valid score from previous rounds.
-    // Only exclude players who have never played (score === 0 AND no holes ever recorded).
-    const activeVals = (team.proIds || [])
-      .map(id => ({ id, score: proScores[id] ?? 0, holes: proHoles[id] ?? 0 }))
-      .filter(({ score, holes }) => score !== 0 || holes > 0)  // exclude true pre-tournament zeros
-      .map(({ score }) => score)
+    // We can't distinguish "even par from round 1" from "hasn't played yet" once
+    // the tournament starts, so include everyone and take best-N.
+    const allVals = (team.proIds || [])
+      .map(id => proScores[id] ?? 0)
       .sort((a, b) => a - b)
       .slice(0, proCount);
-    proTotal = activeVals.length === proCount
-      ? activeVals.reduce((a, b) => a + b, 0)
+    proTotal = allVals.length === proCount
+      ? allVals.reduce((a, b) => a + b, 0)
       : null;
   } else {
     // Pre-tournament (no ESPN data yet): use best-N of all drafted pros.
@@ -775,8 +772,8 @@ function ProsView({ state }) {
   const ranked = [...teams]
     .map(t => {
       const sorted = [...(t.proIds||[])].sort((a,b) => (proScores[a]??0) - (proScores[b]??0));
-      const eligible = sorted.filter(id =>
-        !hasHolesData || (proScores[id] ?? 0) !== 0 || (proHoles[id] ?? 0) > 0
+      const eligible = hasHolesData ? sorted : sorted.filter(id =>
+        (proScores[id] ?? 0) !== 0 || (proHoles[id] ?? 0) > 0
       );
       const top = eligible.slice(0, proCount);
       const proTotal = top.length === proCount
@@ -1538,7 +1535,7 @@ function LeaderboardView({ state }) {
               const {text,cls}=fmt(displayScore);
               const isOpen=open===team.id;
               const hasHoles = Object.keys(proHoles).length > 0;
-              // Sort: played pros first (by score), then unplayed
+              // Sort: best score first, then show stars on best-N
               const sortedProIds=[...(team.proIds||[])].sort((a,b)=>{
                 const aPlayed = (proHoles[a]??0) > 0;
                 const bPlayed = (proHoles[b]??0) > 0;
@@ -1546,6 +1543,12 @@ function LeaderboardView({ state }) {
                 if (!aPlayed && bPlayed) return 1;
                 return (proScores[a]??0)-(proScores[b]??0);
               });
+              // Top-N are simply the best-scoring N pros
+              const topNIds = new Set(
+                [...(team.proIds||[])]
+                  .sort((a,b) => (proScores[a]??0) - (proScores[b]??0))
+                  .slice(0, proCount)
+              );
               const playedIds = sortedProIds.filter(id => (proHoles[id]??0) > 0);
               return (
                 <div key={team.id}>
@@ -1576,11 +1579,10 @@ function LeaderboardView({ state }) {
                           const {text:pt,cls:pc}=fmt(s);
                           const played = (proHoles[id]??0) > 0 || (proScores[id]??0) !== 0;
                           const holes = proHoles[id];
-                          // Star = played and counting (all played pros count during live round)
-                          const inTop = hasHoles ? played : playedIds.length===0;
+                          const inTop = topNIds.has(id);
                           return (
-                            <div key={id} style={{display:'flex',alignItems:'center',gap:8,padding:'4px 0',opacity:played?1:0.4}}>
-                              <span style={{fontSize:11,color:'var(--gold)',width:14}}>{inTop&&played?'★':''}</span>
+                            <div key={id} style={{display:'flex',alignItems:'center',gap:8,padding:'4px 0',opacity:played||hasHoles?1:0.4}}>
+                              <span style={{fontSize:11,color:'var(--gold)',width:14}}>{inTop?'★':''}</span>
                               <span style={{fontSize:12,flex:1}}>{pro?.name}</span>
                               {holes!=null && <span style={{fontSize:10,color:'var(--muted)',fontFamily:'DM Mono,monospace'}}>thru {holes}</span>}
                               <span className={`sc ${pc}`} style={{fontSize:11}}>{pt}</span>

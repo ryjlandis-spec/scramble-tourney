@@ -238,9 +238,9 @@ function saveLocal(s) {
 // keyed by hole index ("0"…"17") before writing, and back to an array on read.
 
 function toFirestore(state) {
-  // proHoles is ESPN-derived and local-only — never write to Firestore.
-  // Every client recomputes it from the ESPN auto-sync.
-  const { proHoles: _omit, ...rest } = state;
+  // proScores and proHoles are ESPN-derived and local-only — never write to Firestore.
+  // Every client recomputes them from the ESPN auto-sync independently.
+  const { proHoles: _ph, proScores: _ps, ...rest } = state;
   return {
     ...rest,
     teams: (state.teams || []).map(t => ({
@@ -1543,7 +1543,7 @@ function LeaderboardView({ state }) {
           </button>
         </div>
         <div className="alert green" style={{marginBottom:10,fontSize:11}}>
-          Combined = Scramble + top 3 pros · {showNet?'Net (handicap applied)':'Gross'} · tap row for details
+          Combined = Scramble + top {proCount} pro{proCount>1?'s':''} · {showNet?'Net (handicap applied)':'Gross'} · tap row for details
         </div>
 
         {ranked.length===0
@@ -2324,9 +2324,9 @@ export default function App() {
           teams: (remote.teams||[]).length >= (stateRef.current.teams||[]).length
             ? remote.teams
             : stateRef.current.teams,
-          // proScores: Firestore wins (admin edits), ESPN will overlay on next sync
-          proScores: remote.proScores || stateRef.current.proScores || {},
-          // proHoles: always local — ESPN-only, never in Firestore
+          // proScores and proHoles are ESPN-derived — always keep local versions.
+          // Firestore snapshots must never overwrite fresh ESPN data with stale scores.
+          proScores: stateRef.current.proScores || {},
           proHoles: stateRef.current.proHoles || {},
         };
 

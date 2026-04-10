@@ -1554,14 +1554,10 @@ function LeaderboardView({ state }) {
               const {text,cls}=fmt(displayScore);
               const isOpen=open===team.id;
               const hasHoles = Object.keys(proHoles).length > 0;
-              // Sort: best score first, then show stars on best-N
-              const sortedProIds=[...(team.proIds||[])].sort((a,b)=>{
-                const aPlayed = (proHoles[a]??0) > 0;
-                const bPlayed = (proHoles[b]??0) > 0;
-                if (aPlayed && !bPlayed) return -1;
-                if (!aPlayed && bPlayed) return 1;
-                return (proScores[a]??0)-(proScores[b]??0);
-              });
+              // Sort purely by score — best first — so visual order matches the stars
+              const sortedProIds=[...(team.proIds||[])].sort((a,b)=>
+                (proScores[a]??0)-(proScores[b]??0)
+              );
               // Top-N are simply the best-scoring N pros
               const topNIds = new Set(
                 [...(team.proIds||[])]

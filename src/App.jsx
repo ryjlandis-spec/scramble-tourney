@@ -1298,6 +1298,7 @@ function ScoresView({ state, setState }) {
   const { teams, par } = state;
   const [selTeam, setSelTeam] = useState(teams[0]?.id||null);
   const [trackingHole, setTrackingHole] = useState(null);
+  const [rulesOpen, setRulesOpen] = useState(false);
   useEffect(() => {
     if (!selTeam && teams.length > 0) setSelTeam(teams[0].id);
   }, [teams]);
@@ -1360,6 +1361,27 @@ function ScoresView({ state, setState }) {
             <option key={t.id} value={t.id}>{t.name}</option>
           ))}
         </select>
+      </div>
+
+      {/* Rules toggle */}
+      <div className="sec" style={{paddingTop:8,paddingBottom:0}}>
+        <button
+          onClick={()=>setRulesOpen(o=>!o)}
+          style={{width:'100%',padding:'7px 12px',borderRadius:7,border:'1px solid var(--border2)',background:'none',
+            color:'var(--muted)',fontFamily:'DM Mono,monospace',fontSize:10,cursor:'pointer',
+            display:'flex',justifyContent:'space-between',alignItems:'center',letterSpacing:'.4px',textTransform:'uppercase'}}
+        >
+          <span>📋 Rules</span>
+          <span>{rulesOpen ? '▲' : '▼'}</span>
+        </button>
+        {rulesOpen && (
+          <div style={{marginTop:6,padding:'10px 12px',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:8,fontSize:12,color:'var(--cream)',lineHeight:1.7}}>
+            <div style={{marginBottom:6,fontWeight:600,color:'var(--gold)',fontFamily:'DM Mono,monospace',fontSize:11,textTransform:'uppercase',letterSpacing:'.5px'}}>2-Man Scramble · Handicap Adjusted</div>
+            <div>✏️ Enter scores in the Scores tab. Tap the hole number on the left to optionally log Strokes Gained.</div>
+            <div style={{marginTop:6}}>🤏 <strong>Gimmes</strong> — inside putter length.</div>
+            <div style={{marginTop:6}}>🍺 <strong>Carolina Mulligan</strong> — unlimited, max 1 per team per hole, on any shot outside 50 yards. Shotgun a 12oz beer and hit your ball within ~12 seconds.</div>
+          </div>
+        )}
       </div>
 
       <div className="sec" style={{paddingTop:0}}>

@@ -1507,12 +1507,14 @@ function LeaderboardView({ state }) {
     return teams
       .map(t=>({team:t,...calcTeam(t,proScores,tournament,proHoles)}))
       .sort((a,b)=>{
-        if(a.combined===null&&b.combined===null) return 0;
-        if(a.combined===null) return 1;
-        if(b.combined===null) return -1;
-        return a.combined-b.combined;
+        const aScore = showNet ? a.netCombined : a.combined;
+        const bScore = showNet ? b.netCombined : b.combined;
+        if(aScore===null&&bScore===null) return 0;
+        if(aScore===null) return 1;
+        if(bScore===null) return -1;
+        return aScore-bScore;
       });
-  },[teams,proScores,showNet]);
+  },[teams,proScores,tournament,proHoles,showNet]);
 
   return (
     <div className="page">

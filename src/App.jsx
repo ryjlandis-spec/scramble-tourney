@@ -2210,20 +2210,29 @@ export default function App() {
         const hStat = c.statistics?.find(x =>
           x.name === 'holesPlayed' || x.name === 'thru' || x.name === 'holes'
         );
-        // status.thru is the most reliable source — it's what ESPN shows on screen
-        // displayThru is a pre-formatted string ("1", "F") as fallback
         const holes = hStat?.value ?? c.status?.thru ?? null;
         const holesDisplay = holes !== null ? holes : (c.status?.displayThru && c.status.displayThru !== '-' ? c.status.displayThru : null);
-        if (name) espnMap[name] = { score: s?.value ?? 0, holes: holesDisplay };
+        const statusName = c.status?.type?.name || '';
+        const missedCut = statusName.includes('MISSED_CUT') || statusName.includes('CUT') || statusName === 'STATUS_CUT';
+        if (name) espnMap[name] = { score: s?.value ?? 0, holes: holesDisplay, missedCut };
       });
+
+      // Find the cut line: worst (highest) score among players who made the cut
+      const madeCutScores = Object.values(espnMap)
+        .filter(p => !p.missedCut && p.score !== undefined)
+        .map(p => p.score);
+      const cutScore = madeCutScores.length > 0 ? Math.max(...madeCutScores) : null;
+
       let matched = 0;
       const newScores = {};
       const newHoles = {};
       PROS.forEach(pro => {
         const found = Object.entries(espnMap).find(([n]) => namesMatch(n, pro.name));
         if (found) {
-          newScores[pro.id] = found[1].score;
-          if (found[1].holes !== null) newHoles[pro.id] = found[1].holes;
+          const { score, holes, missedCut } = found[1];
+          // Missed cut penalty: cutScore + 1 (worst score that made cut + 1)
+          newScores[pro.id] = (missedCut && cutScore !== null) ? cutScore + 1 : score;
+          if (holes !== null) newHoles[pro.id] = holes;
           matched++;
         }
       });

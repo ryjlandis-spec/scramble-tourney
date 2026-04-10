@@ -1365,17 +1365,8 @@ function ScoresView({ state, setState }) {
 
       {/* Rules toggle */}
       <div className="sec" style={{paddingTop:8,paddingBottom:0}}>
-        <button
-          onClick={()=>setRulesOpen(o=>!o)}
-          style={{width:'100%',padding:'7px 12px',borderRadius:7,border:'1px solid var(--border2)',background:'none',
-            color:'var(--muted)',fontFamily:'DM Mono,monospace',fontSize:10,cursor:'pointer',
-            display:'flex',justifyContent:'space-between',alignItems:'center',letterSpacing:'.4px',textTransform:'uppercase'}}
-        >
-          <span>📋 Rules</span>
-          <span>{rulesOpen ? '▲' : '▼'}</span>
-        </button>
         {rulesOpen && (
-          <div style={{marginTop:6,padding:'10px 12px',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:8,fontSize:12,color:'var(--cream)',lineHeight:1.7}}>
+          <div style={{marginBottom:8,padding:'10px 12px',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:8,fontSize:12,color:'var(--cream)',lineHeight:1.7}}>
             <div style={{marginBottom:6,fontWeight:600,color:'var(--gold)',fontFamily:'DM Mono,monospace',fontSize:11,textTransform:'uppercase',letterSpacing:'.5px'}}>2-Man Scramble · Handicap Adjusted</div>
             <div>✏️ Enter scores in the Scores tab. Tap the hole number on the left to optionally log Strokes Gained.</div>
             <div style={{marginTop:6}}>🤏 <strong>Gimmes</strong> — inside putter length.</div>
@@ -1393,18 +1384,27 @@ function ScoresView({ state, setState }) {
                 <div style={{fontWeight:600,fontSize:15}}>{team.name}</div>
                 <div style={{fontSize:11,color:'var(--muted)'}}>{team.player1} & {team.player2}</div>
               </div>
-              {(() => {
-                const total = frontTotal+backTotal;
-                const entered = frontEntered+backEntered;
-                if(!entered) return null;
-                const {text,cls}=fmt(total-(par.slice(0,entered).reduce((a,b)=>a+b,0)));
-                return (
-                  <div style={{textAlign:'right'}}>
-                    <span className={`sc ${cls}`} style={{fontSize:17}}>{text}</span>
-                    <div style={{fontSize:10,color:'var(--muted)',fontFamily:'DM Mono,monospace',marginTop:2}}>thru {entered}</div>
-                  </div>
-                );
-              })()}
+              <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+                <button
+                  onClick={()=>setRulesOpen(o=>!o)}
+                  style={{padding:'4px 10px',borderRadius:16,border:'1px solid var(--border2)',background:rulesOpen?'var(--surface2)':'none',
+                    color:'var(--muted)',fontFamily:'DM Mono,monospace',fontSize:9,cursor:'pointer',letterSpacing:'.4px',textTransform:'uppercase'}}
+                >
+                  📋 Rules
+                </button>
+                {(() => {
+                  const total = frontTotal+backTotal;
+                  const entered = frontEntered+backEntered;
+                  if(!entered) return null;
+                  const {text,cls}=fmt(total-(par.slice(0,entered).reduce((a,b)=>a+b,0)));
+                  return (
+                    <div style={{textAlign:'right'}}>
+                      <span className={`sc ${cls}`} style={{fontSize:17}}>{text}</span>
+                      <div style={{fontSize:10,color:'var(--muted)',fontFamily:'DM Mono,monospace',marginTop:2}}>thru {entered}</div>
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
 
             {/* Scorecard */}

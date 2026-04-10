@@ -282,16 +282,18 @@ function calcTeam(team, proScores, tournament, proHoles = {}) {
 
   let proTotal;
   if (hasHolesData) {
-    // Live round: best-N of pros that have played at least 1 hole.
-    // Unplayed pros default to 0 (even) which incorrectly inflates the score —
-    // only include pros who've actually teed off.
-    const playedVals = (team.proIds || [])
-      .filter(id => (proHoles[id] ?? 0) > 0)
-      .map(id => proScores[id] ?? 0)
+    // Tournament is underway — include ALL drafted pros using their cumulative score.
+    // We no longer filter by today's holes because on day 2+, players who haven't
+    // teed off yet still have a valid score from previous rounds.
+    // Only exclude players who have never played (score === 0 AND no holes ever recorded).
+    const activeVals = (team.proIds || [])
+      .map(id => ({ id, score: proScores[id] ?? 0, holes: proHoles[id] ?? 0 }))
+      .filter(({ score, holes }) => score !== 0 || holes > 0)  // exclude true pre-tournament zeros
+      .map(({ score }) => score)
       .sort((a, b) => a - b)
       .slice(0, proCount);
-    proTotal = playedVals.length === proCount
-      ? playedVals.reduce((a, b) => a + b, 0)
+    proTotal = activeVals.length === proCount
+      ? activeVals.reduce((a, b) => a + b, 0)
       : null;
   } else {
     // Pre-tournament (no ESPN data yet): use best-N of all drafted pros.
@@ -773,7 +775,9 @@ function ProsView({ state }) {
   const ranked = [...teams]
     .map(t => {
       const sorted = [...(t.proIds||[])].sort((a,b) => (proScores[a]??0) - (proScores[b]??0));
-      const eligible = sorted.filter(id => !hasHolesData || (proHoles[id] ?? 0) > 0);
+      const eligible = sorted.filter(id =>
+        !hasHolesData || (proScores[id] ?? 0) !== 0 || (proHoles[id] ?? 0) > 0
+      );
       const top = eligible.slice(0, proCount);
       const proTotal = top.length === proCount
         ? top.reduce((s,id) => s + (proScores[id]??0), 0)
@@ -1570,7 +1574,7 @@ function LeaderboardView({ state }) {
                           const pro=PROS_MAP[id];
                           const s=proScores[id]??0;
                           const {text:pt,cls:pc}=fmt(s);
-                          const played = (proHoles[id]??0) > 0;
+                          const played = (proHoles[id]??0) > 0 || (proScores[id]??0) !== 0;
                           const holes = proHoles[id];
                           // Star = played and counting (all played pros count during live round)
                           const inTop = hasHoles ? played : playedIds.length===0;

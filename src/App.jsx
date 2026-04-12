@@ -2317,15 +2317,59 @@ export default function App() {
         // 30-second window gives the save plenty of time to reach Firestore.
         if (Date.now() - userEditedAt.current < 30000) return;
 
+        // Smart merge tournament — never overwrite a filled field with an empty one
+        const localTournament = stateRef.current.tournament || {};
+        const remoteTournament = remote.tournament || {};
+        const mergedTournament = { ...remoteTournament };
+        Object.keys(localTournament).forEach(k => {
+          const localVal = localTournament[k];
+          const remoteVal = remoteTournament[k];
+          const localFilled = localVal !== '' && localVal != null && localVal !== 0;
+          const remoteFilled = remoteVal !== '' && remoteVal != null && remoteVal !== 0;
+          if (localFilled && !remoteFilled) mergedTournament[k] = localVal;
+        });
+
+        // Smart merge: never let a Firestore snapshot overwrite a non-empty score
+        // with an empty one. This protects against last-write-wins data loss when
+        // multiple clients are scoring simultaneously.
+        function mergeTeamScores(localTeam, remoteTeam) {
+          if (!localTeam || !remoteTeam) return remoteTeam || localTeam;
+          const scores = Array.from({length: 18}, (_, h) => {
+            const local  = localTeam.scores?.[h];
+            const remote = remoteTeam.scores?.[h];
+            const localHas  = local  !== '' && local  != null;
+            const remoteHas = remote !== '' && remote != null;
+            // Keep whichever is non-empty; if both non-empty, keep remote (more recent write)
+            if (localHas && !remoteHas) return local;
+            return remoteHas ? remote : local ?? '';
+          });
+          // Same for shots — keep local if remote is empty
+          const shots = Array.from({length: 18}, (_, h) => {
+            const local  = localTeam.shots?.[h];
+            const remote = remoteTeam.shots?.[h];
+            if (local?.length > 1 && (!remote || remote.length <= 1)) return local;
+            return remote || local || [];
+          });
+          return { ...remoteTeam, scores, shots };
+        }
+
+        const localTeamsMap = Object.fromEntries(
+          (stateRef.current.teams || []).map(t => [t.id, t])
+        );
+        const mergedTeams = (remote.teams || []).map(rt =>
+          mergeTeamScores(localTeamsMap[rt.id], rt)
+        );
+        // Also keep any local teams not yet in remote (race condition on team add)
+        const remoteTeamIds = new Set((remote.teams||[]).map(t=>t.id));
+        (stateRef.current.teams||[]).forEach(lt => {
+          if (!remoteTeamIds.has(lt.id)) mergedTeams.push(lt);
+        });
+
         const merged = {
           ...remote,
           par: DEFAULT_PAR,
-          // Never let a stale reconnect snapshot reduce the team count
-          teams: (remote.teams||[]).length >= (stateRef.current.teams||[]).length
-            ? remote.teams
-            : stateRef.current.teams,
-          // proScores and proHoles are ESPN-derived — always keep local versions.
-          // Firestore snapshots must never overwrite fresh ESPN data with stale scores.
+          tournament: mergedTournament,
+          teams: mergedTeams,
           proScores: stateRef.current.proScores || {},
           proHoles: stateRef.current.proHoles || {},
         };
@@ -2381,7 +2425,7 @@ export default function App() {
     saveTimer.current = setTimeout(async () => {
       setSyncStatus('syncing');
       try {
-        // Write full state (including proScores for admin edits) — but strip proHoles
+        // Write full state but strip ESPN-only fields
         // since it's local-only and recomputed from ESPN on every client.
         const clean = toFirestore(state);
         const [col, docId] = FS_DOC.split('/');
@@ -2404,7 +2448,7 @@ export default function App() {
           }
         }, 5000);
       }
-    }, 1000);
+    }, 3000);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 

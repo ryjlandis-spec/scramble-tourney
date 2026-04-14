@@ -303,34 +303,34 @@ function calcTeam(team, proScores, tournament, proHoles = {}) {
   return { scrambleToPar, proTotal, combined, netCombined, hcp, n };
 }
 
-function calcSkins(teams, par, skinsAmt) {
-  const result = []; let carry = 0;
+function calcSkins(teams, par, totalPot) {
+  // First pass: determine winner/tie on each hole by net score
+  const holes = [];
   for (let h = 0; h < 18; h++) {
     const entries = teams
       .map(t => {
         const s = t.scores[h];
         if (s === '' || s === null || s === undefined) return null;
         const gross = Number(s);
-        // Strokes received: team gets a stroke on this hole if hole HCP index <= team HCP
         const hcp = teamHandicap(t.hcp1||0, t.hcp2||0);
         const strokes = HOLE_HCP[h] <= hcp ? 1 : 0;
         const net = gross - strokes;
         return { team: t, gross, net };
       })
       .filter(Boolean);
-    if (entries.length < 2) { result.push({hole:h+1,par:par[h],st:'pending',carry,pot:0}); continue; }
+    if (entries.length < 2) { holes.push({hole:h+1,par:par[h],st:'pending',entries:[]}); continue; }
     const min = Math.min(...entries.map(e=>e.net));
     const wins = entries.filter(e=>e.net===min);
-    const pot = (carry+1)*skinsAmt;
     if (wins.length === 1) {
-      result.push({hole:h+1,par:par[h],st:'won',winner:wins[0].team,score:wins[0].gross,net:min,carry,pot});
-      carry = 0;
+      holes.push({hole:h+1,par:par[h],st:'won',winner:wins[0].team,gross:wins[0].gross,net:min,entries});
     } else {
-      result.push({hole:h+1,par:par[h],st:'tied',tied:wins.map(w=>w.team),score:min,carry,pot:0});
-      carry++;
+      holes.push({hole:h+1,par:par[h],st:'tied',tied:wins.map(w=>w.team),net:min,entries});
     }
   }
-  return result;
+  // Second pass: divide total pot equally among won skins
+  const skinsWon = holes.filter(h=>h.st==='won').length;
+  const skinValue = skinsWon > 0 ? Math.round((totalPot / skinsWon) * 100) / 100 : 0;
+  return holes.map(h => ({...h, pot: h.st==='won' ? skinValue : 0, skinValue, skinsWon, totalPot}));
 }
 
 function courseHandicap(idx) {
@@ -522,7 +522,7 @@ function SetupView({ state, setState, adminMode, setSyncStatus, syncESPN, syncin
               <input className="inp" type="date" value={tournament.date} onChange={e=>setT('date',e.target.value)} />
               <div className="row2">
                 <div style={{flex:1}}>
-                  <label className="lbl">Skins/Hole ($)</label>
+                  <label className="lbl">Skins Total Pot ($)</label>
                   <input className="inp" type="number" value={tournament.skinsPerHole} onChange={e=>setT('skinsPerHole',Number(e.target.value))} />
                 </div>
                 <div style={{flex:1}}>
@@ -1622,19 +1622,23 @@ function LeaderboardView({ state }) {
 
 function SkinsView({ state }) {
   const { teams, par, tournament } = state;
-  const skins = useMemo(()=>calcSkins(teams,par,tournament.skinsPerHole),[teams,par,tournament.skinsPerHole]);
+  const totalPot = tournament.skinsPerHole || 400; // skinsPerHole field repurposed as total pot
+  const skins = useMemo(()=>calcSkins(teams,par,totalPot),[teams,par,totalPot]);
+  const [openHole, setOpenHole] = useState(null);
+
+  const skinsWon   = skins.filter(s=>s.st==='won').length;
+  const skinValue  = skinsWon > 0 ? Math.round((totalPot / skinsWon) * 100) / 100 : 0;
 
   const tally = {};
   skins.forEach(s=>{
     if(s.st==='won'){
       const id=s.winner.id;
       if(!tally[id]) tally[id]={team:s.winner,holes:[],total:0};
-      tally[id].holes.push(s.hole); tally[id].total+=s.pot;
+      tally[id].holes.push(s.hole);
+      tally[id].total = parseFloat((tally[id].total + skinValue).toFixed(2));
     }
   });
   const winners=Object.values(tally).sort((a,b)=>b.total-a.total);
-  const totalPot=skins.reduce((_s,h)=>_s+(h.pot||0)+(h.st==='pending'?tournament.skinsPerHole:0),0);
-  const carryAmt=skins.filter(s=>s.st!=='won'&&s.st!=='pending').length * tournament.skinsPerHole;
 
   return (
     <div className="page">
@@ -1644,9 +1648,9 @@ function SkinsView({ state }) {
         {/* Summary tiles */}
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:14}}>
           {[
-            ['Won', skins.filter(s=>s.st==='won').length, 'var(--green)'],
-            ['Carried', skins.filter(s=>s.st==='tied').length, 'var(--red)'],
-            ['Remaining', skins.filter(s=>s.st==='pending').length, 'var(--muted)'],
+            ['Skins', skinsWon, 'var(--green)'],
+            ['Tied', skins.filter(s=>s.st==='tied').length, 'var(--red)'],
+            ['Left', skins.filter(s=>s.st==='pending').length, 'var(--muted)'],
           ].map(([l,v,c])=>(
             <div key={l} className="card-sm">
               <div style={{fontFamily:'DM Mono,monospace',fontSize:24,color:c}}>{v}</div>
@@ -1655,55 +1659,105 @@ function SkinsView({ state }) {
           ))}
         </div>
 
+        {/* Pot info */}
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 12px',background:'var(--surface)',borderRadius:8,marginBottom:12,border:'1px solid var(--border)'}}>
+          <span style={{fontSize:12,color:'var(--muted)',fontFamily:'DM Mono,monospace'}}>Total Pot</span>
+          <span style={{fontFamily:'DM Mono,monospace',fontSize:15,color:'var(--gold)'}}>${totalPot}</span>
+          <span style={{fontSize:12,color:'var(--muted)',fontFamily:'DM Mono,monospace'}}>Per Skin</span>
+          <span style={{fontFamily:'DM Mono,monospace',fontSize:15,color:'var(--green)'}}>
+            {skinsWon > 0 ? `$${skinValue}` : '--'}
+          </span>
+        </div>
+
         {/* Winnings tally */}
         {winners.length > 0 && (
           <div className="card" style={{marginBottom:12}}>
             <div className="lbl">Winnings</div>
             {winners.map(({team,holes,total})=>(
               <div key={team.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:'1px solid var(--border)'}}>
-                <div>
-                  <div style={{fontWeight:600,fontSize:13}}>{team.name}</div>
+                <div style={{minWidth:0,flex:1}}>
+                  <div style={{fontWeight:600,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{team.name}</div>
                   <div style={{fontSize:11,color:'var(--muted)'}}>Holes {holes.join(', ')}</div>
                 </div>
-                <div style={{fontFamily:'DM Mono,monospace',fontSize:17,color:'var(--green)'}}>${total}</div>
+                <div style={{fontFamily:'DM Mono,monospace',fontSize:17,color:'var(--green)',flexShrink:0,marginLeft:12}}>${total}</div>
               </div>
             ))}
           </div>
         )}
 
         {/* Hole by hole */}
-        <div className="card" style={{padding:'8px 14px'}}>
-          <div className="lbl" style={{marginBottom:6}}>Hole by Hole</div>
-          {skins.map(s=>(
-            <div key={s.hole} className="sk-row">
-              <div className="sk-n">{s.hole}</div>
-              <div style={{fontSize:10,color:'var(--muted)',fontFamily:'DM Mono,monospace',width:32,flexShrink:0}}>P{s.par}</div>
-              <div style={{flex:1,minWidth:0}}>
-                {s.st==='won' && (
-                  <>
-                    <div style={{fontWeight:600,fontSize:13,color:'var(--green)'}}>{s.winner.name}</div>
-                    <div style={{fontSize:10,color:'var(--muted)'}}>
-                      Net {s.net} (gross {s.score}){s.carry>0?` · +${s.carry} carried`:''}
-                    </div>
-                  </>
-                )}
-                {s.st==='tied' && (
-                  <>
-                    <div style={{fontWeight:600,fontSize:12,color:'var(--red)'}}>Tied — Carry Forward</div>
-                    <div style={{fontSize:10,color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.tied.map(t=>t.name).join(', ')}</div>
-                  </>
-                )}
-                {s.st==='pending' && (
-                  <div style={{fontSize:12,color:'var(--muted)',fontStyle:'italic'}}>Not played</div>
+        <div className="card" style={{padding:'4px 12px'}}>
+          <div className="lbl" style={{marginBottom:4,paddingTop:6}}>Hole by Hole · tap to see all scores</div>
+          {skins.map(s=>{
+            const isOpen = openHole === s.hole;
+            return (
+              <div key={s.hole} style={{borderBottom:'1px solid var(--border)'}}>
+                {/* Main row */}
+                <div onClick={()=>setOpenHole(isOpen?null:s.hole)}
+                  style={{display:'flex',alignItems:'center',gap:8,padding:'9px 0',cursor:'pointer'}}>
+                  <div style={{fontFamily:'Playfair Display,serif',fontSize:18,color:'var(--gold)',width:22,flexShrink:0}}>{s.hole}</div>
+                  <div style={{fontSize:10,color:'var(--muted)',fontFamily:'DM Mono,monospace',width:24,flexShrink:0}}>P{s.par}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    {s.st==='won' && (
+                      <>
+                        <div style={{fontWeight:600,fontSize:13,color:'var(--green)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.winner.name}</div>
+                        <div style={{fontSize:10,color:'var(--muted)'}}>Net {s.net} (gross {s.gross})</div>
+                      </>
+                    )}
+                    {s.st==='tied' && (
+                      <>
+                        <div style={{fontWeight:600,fontSize:12,color:'var(--red)'}}>Tied — No Skin</div>
+                        <div style={{fontSize:10,color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.tied.map(t=>t.name).join(', ')}</div>
+                      </>
+                    )}
+                    {s.st==='pending' && (
+                      <div style={{fontSize:12,color:'var(--muted)',fontStyle:'italic'}}>Not played</div>
+                    )}
+                  </div>
+                  <div style={{textAlign:'right',flexShrink:0,fontFamily:'DM Mono,monospace',fontSize:13,marginLeft:8}}>
+                    {s.st==='won' && <span style={{color:'var(--green)'}}>${skinValue}</span>}
+                    {s.st==='tied' && <span style={{color:'var(--muted)',fontSize:11}}>tied</span>}
+                    {s.st==='pending' && <span style={{color:'var(--muted)',fontSize:11}}>--</span>}
+                  </div>
+                  <div style={{fontSize:10,color:'var(--muted)',marginLeft:4}}>{isOpen?'▲':'▼'}</div>
+                </div>
+
+                {/* Expanded: all team scores on this hole */}
+                {isOpen && (
+                  <div style={{paddingBottom:10}}>
+                    {(s.entries||[]).length === 0
+                      ? <div style={{fontSize:12,color:'var(--muted)',fontStyle:'italic',padding:'4px 0'}}>No scores entered</div>
+                      : [...s.entries]
+                          .sort((a,b)=>a.net-b.net)
+                          .map(e => {
+                            const hcp = teamHandicap(e.team.hcp1||0, e.team.hcp2||0);
+                            const gotStroke = HOLE_HCP[s.hole-1] <= hcp;
+                            const isWinner = s.st==='won' && s.winner.id===e.team.id;
+                            const isTied = s.st==='tied' && s.tied.some(t=>t.id===e.team.id);
+                            return (
+                              <div key={e.team.id} style={{
+                                display:'flex',alignItems:'center',gap:8,padding:'4px 8px',borderRadius:6,
+                                background:isWinner?'rgba(82,196,98,.08)':isTied?'rgba(224,82,82,.06)':'none',
+                                marginBottom:2,
+                              }}>
+                                <span style={{fontSize:12,flex:1,fontWeight:isWinner?600:400,
+                                  overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',
+                                  color:isWinner?'var(--green)':isTied?'var(--red)':'var(--cream)'}}>
+                                  {e.team.name}
+                                </span>
+                                {gotStroke && <span style={{fontSize:9,color:'var(--gold)',fontFamily:'DM Mono,monospace'}}>-1</span>}
+                                <span style={{fontFamily:'DM Mono,monospace',fontSize:12,flexShrink:0,color:isWinner?'var(--green)':isTied?'var(--red)':'var(--muted)'}}>
+                                  {e.gross} → net {e.net}
+                                </span>
+                              </div>
+                            );
+                          })
+                    }
+                  </div>
                 )}
               </div>
-              <div style={{textAlign:'right',flexShrink:0,fontFamily:'DM Mono,monospace',fontSize:13}}>
-                {s.st==='won' && <span style={{color:'var(--green)'}}>${s.pot}</span>}
-                {s.st==='tied' && <span style={{color:'var(--muted)',fontSize:11}}>carry</span>}
-                {s.st==='pending' && <span style={{color:'var(--muted)'}}>${tournament.skinsPerHole}</span>}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
@@ -2317,15 +2371,22 @@ export default function App() {
         // 30-second window gives the save plenty of time to reach Firestore.
         if (Date.now() - userEditedAt.current < 30000) return;
 
-        // Smart merge tournament — never overwrite a filled field with an empty one
+        // Smart merge tournament — never overwrite a non-default local value with remote
         const localTournament = stateRef.current.tournament || {};
         const remoteTournament = remote.tournament || {};
         const mergedTournament = { ...remoteTournament };
         Object.keys(localTournament).forEach(k => {
           const localVal = localTournament[k];
           const remoteVal = remoteTournament[k];
-          const localFilled = localVal !== '' && localVal != null && localVal !== 0;
-          const remoteFilled = remoteVal !== '' && remoteVal != null && remoteVal !== 0;
+          // For numeric choice fields (proCount), take the higher value —
+          // user intentionally increasing from default 1 → 3 should never revert.
+          if (k === 'proCount' && typeof localVal === 'number' && typeof remoteVal === 'number') {
+            mergedTournament[k] = Math.max(localVal, remoteVal);
+            return;
+          }
+          // For other fields: keep local if remote is empty/missing
+          const localFilled = localVal !== '' && localVal != null;
+          const remoteFilled = remoteVal !== '' && remoteVal != null;
           if (localFilled && !remoteFilled) mergedTournament[k] = localVal;
         });
 

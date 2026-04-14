@@ -1518,47 +1518,77 @@ function LeaderboardView({ state }) {
   const { teams, proScores, proHoles = {}, tournament } = state;
   const proCount = tournament?.proCount || 1;
   const [open, setOpen] = useState(null);
-  const [showNet, setShowNet] = useState(false);
+  // mode: 'overall_net' | 'golf_gross' | 'golf_net'
+  const [mode, setMode] = useState('overall_net');
+
+  const getScore = (t) => {
+    if (mode === 'overall_net') return t.netCombined;
+    if (mode === 'golf_gross')  return t.scrambleToPar;
+    if (mode === 'golf_net')    return t.scrambleToPar !== null ? t.scrambleToPar - t.hcp : null;
+    return t.netCombined;
+  };
 
   const ranked = useMemo(()=>{
     return teams
       .map(t=>({team:t,...calcTeam(t,proScores,tournament,proHoles)}))
       .sort((a,b)=>{
-        const aScore = showNet ? a.netCombined : a.combined;
-        const bScore = showNet ? b.netCombined : b.combined;
+        const aScore = getScore(a);
+        const bScore = getScore(b);
         if(aScore===null&&bScore===null) return 0;
         if(aScore===null) return 1;
         if(bScore===null) return -1;
         return aScore-bScore;
       });
-  },[teams,proScores,tournament,proHoles,showNet]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[teams,proScores,tournament,proHoles,mode]);
+
+  const modeLabel = mode === 'overall_net' ? `Overall Net (Scramble + Pros)` :
+                    mode === 'golf_gross'  ? 'Golf Gross (Scramble only)' :
+                    'Golf Net (Scramble − Handicap)';
 
   return (
     <div className="page">
       <div className="sec">
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
           <div className="sh" style={{marginBottom:0}}>Leaderboard</div>
-          <button className={`btn sm ${showNet?'':'sec'}`} style={{flexShrink:0}} onClick={()=>setShowNet(n=>!n)}>
-            {showNet?'⛳ Net':'📊 Gross'}
-          </button>
         </div>
+
+        {/* Mode selector */}
+        <div style={{display:'flex',gap:6,marginBottom:10}}>
+          {[
+            {id:'overall_net', label:'Overall Net'},
+            {id:'golf_gross',  label:'Golf Gross'},
+            {id:'golf_net',    label:'Golf Net'},
+          ].map(m=>(
+            <button key={m.id}
+              onClick={()=>setMode(m.id)}
+              style={{
+                flex:1,padding:'7px 4px',borderRadius:7,fontSize:10,cursor:'pointer',
+                fontFamily:'DM Mono,monospace',letterSpacing:'.3px',textTransform:'uppercase',
+                border:`1px solid ${mode===m.id?'var(--gold)':'var(--border2)'}`,
+                background:mode===m.id?'rgba(201,168,76,.12)':'none',
+                color:mode===m.id?'var(--gold)':'var(--muted)',
+                fontWeight:mode===m.id?700:400,
+              }}
+            >{m.label}</button>
+          ))}
+        </div>
+
         <div className="alert green" style={{marginBottom:10,fontSize:11}}>
-          Combined = Scramble + top {proCount} pro{proCount>1?'s':''} · {showNet?'Net (handicap applied)':'Gross'} · tap row for details
+          {modeLabel} · tap row for details
         </div>
 
         {ranked.length===0
           ? <div className="alert">No teams yet. Go to Setup to add teams.</div>
           : <div className="card" style={{padding:'0 14px'}}>
             {ranked.map(({team,combined,netCombined,scrambleToPar,proTotal,hcp,n},i)=>{
-              const displayScore = showNet ? netCombined : combined;
+              const displayScore = getScore({netCombined,scrambleToPar,hcp,combined});
               const {text,cls}=fmt(displayScore);
               const isOpen=open===team.id;
               const hasHoles = Object.keys(proHoles).length > 0;
-              // Sort purely by score — best first — so visual order matches the stars
               const sortedProIds=[...(team.proIds||[])].sort((a,b)=>
                 (proScores[a]??0)-(proScores[b]??0)
               );
-              // Top-N are simply the best-scoring N pros
               const topNIds = new Set(
                 [...(team.proIds||[])]
                   .sort((a,b) => (proScores[a]??0) - (proScores[b]??0))
@@ -1577,37 +1607,48 @@ function LeaderboardView({ state }) {
                       <div className={`lb-big ${cls}`}>{text}</div>
                       <div className="lb-detail">
                         {n>0?`Scr: ${fmt(scrambleToPar).text}`:'No scores'}
-                        {proTotal!==null?` · Pros: ${fmt(proTotal).text}`:''}
-                        {hcp>0?` · HCP -${hcp}`:''}
+                        {mode==='overall_net' && proTotal!==null?` · Pros: ${fmt(proTotal).text}`:''}
+                        {(mode==='overall_net'||mode==='golf_net') && hcp>0?` · HCP -${hcp}`:''}
                       </div>
                     </div>
                   </div>
 
                   {isOpen && (
                     <div style={{padding:'0 0 12px 36px',borderBottom:'1px solid var(--border)'}}>
-                      <div className="lbl" style={{marginBottom:6}}>Drafted Pros</div>
-                      {sortedProIds.length===0
-                        ? <div style={{fontSize:12,color:'var(--muted)'}}>No pros drafted yet</div>
-                        : sortedProIds.map((id) => {
-                          const pro=PROS_MAP[id];
-                          const s=proScores[id]??0;
-                          const {text:pt,cls:pc}=fmt(s);
-                          const played = (proHoles[id]??0) > 0 || (proScores[id]??0) !== 0;
-                          const holes = proHoles[id];
-                          const inTop = topNIds.has(id);
-                          return (
-                            <div key={id} style={{display:'flex',alignItems:'center',gap:8,padding:'4px 0',opacity:played||hasHoles?1:0.4}}>
-                              <span style={{fontSize:11,color:'var(--gold)',width:14}}>{inTop?'★':''}</span>
-                              <span style={{fontSize:12,flex:1}}>{pro?.name}</span>
-                              {holes!=null && <span style={{fontSize:10,color:'var(--muted)',fontFamily:'DM Mono,monospace'}}>thru {holes}</span>}
-                              <span className={`sc ${pc}`} style={{fontSize:11}}>{pt}</span>
-                            </div>
-                          );
-                        })
-                      }
-                      <div style={{marginTop:6,fontSize:10,color:'var(--muted)'}}>
-                        {hasHoles ? '★ = currently playing · unplayed pros faded' : `Best ${proCount} will count at end of round`}
-                      </div>
+                      {mode === 'overall_net' && (
+                        <>
+                          <div className="lbl" style={{marginBottom:6}}>Drafted Pros</div>
+                          {sortedProIds.length===0
+                            ? <div style={{fontSize:12,color:'var(--muted)'}}>No pros drafted yet</div>
+                            : sortedProIds.map((id) => {
+                              const pro=PROS_MAP[id];
+                              const s=proScores[id]??0;
+                              const {text:pt,cls:pc}=fmt(s);
+                              const played = (proHoles[id]??0) > 0 || (proScores[id]??0) !== 0;
+                              const holes = proHoles[id];
+                              const inTop = topNIds.has(id);
+                              return (
+                                <div key={id} style={{display:'flex',alignItems:'center',gap:8,padding:'4px 0',opacity:played||hasHoles?1:0.4}}>
+                                  <span style={{fontSize:11,color:'var(--gold)',width:14}}>{inTop?'★':''}</span>
+                                  <span style={{fontSize:12,flex:1}}>{pro?.name}</span>
+                                  {holes!=null && <span style={{fontSize:10,color:'var(--muted)',fontFamily:'DM Mono,monospace'}}>thru {holes}</span>}
+                                  <span className={`sc ${pc}`} style={{fontSize:11}}>{pt}</span>
+                                </div>
+                              );
+                            })
+                          }
+                          <div style={{marginTop:6,fontSize:10,color:'var(--muted)'}}>
+                            {hasHoles ? '★ = counting · unplayed faded' : `Best ${proCount} will count`}
+                          </div>
+                        </>
+                      )}
+                      {(mode === 'golf_gross' || mode === 'golf_net') && (
+                        <div style={{fontSize:12,color:'var(--muted)'}}>
+                          {n > 0
+                            ? `Scramble: ${fmt(scrambleToPar).text} gross${mode==='golf_net'?` · HCP -${hcp} · Net ${fmt(scrambleToPar-hcp).text}`:''}`
+                            : 'No scramble scores entered'}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

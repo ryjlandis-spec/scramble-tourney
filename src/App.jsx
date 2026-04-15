@@ -466,6 +466,190 @@ html,body{background:var(--bg);color:var(--cream);font-family:'Inter',sans-serif
 
 // ── VIEWS ──────────────────────────────────────────────────────────────────
 
+function ArchiveView({ archive, onClose }) {
+  const [tab, setTab] = useState('leaderboard');
+  const s = archive.state || {};
+  const teams    = s.teams || [];
+  const par      = s.par || DEFAULT_PAR;
+  const tournament = s.tournament || {};
+  const proScores  = s.proScores || {};
+  const totalPot   = tournament.skinsPerHole || 400;
+
+  // Leaderboard — overall net
+  const ranked = [...teams]
+    .map(t => ({ team:t, ...calcTeam(t, proScores, tournament, {}) }))
+    .sort((a,b)=>{
+      const aS=a.netCombined??a.combined, bS=b.netCombined??b.combined;
+      if(aS===null&&bS===null) return 0;
+      if(aS===null) return 1; if(bS===null) return -1;
+      return aS-bS;
+    });
+
+  // Skins
+  const skins = calcSkins(teams, par, totalPot);
+  const skinsWon = skins.filter(s=>s.st==='won').length;
+  const skinVal  = skinsWon > 0 ? Math.round((totalPot/skinsWon)*100)/100 : 0;
+  const skinsTally = {};
+  skins.forEach(s=>{ if(s.st==='won'){ const id=s.winner.id; if(!skinsTally[id]) skinsTally[id]=0; skinsTally[id]=parseFloat((skinsTally[id]+skinVal).toFixed(2)); } });
+
+  // Prizes
+  const golfNetRanked = [...teams]
+    .map(t=>{ const r=calcTeam(t,proScores,tournament,{}); return {...r,id:t.id,golfNet:r.scrambleToPar!==null?r.scrambleToPar-r.hcp:null}; })
+    .sort((a,b)=>{ if(a.golfNet===null&&b.golfNet===null)return 0; if(a.golfNet===null)return 1; if(b.golfNet===null)return -1; return a.golfNet-b.golfNet; });
+
+  function teamPrize(teamId) {
+    const op = ranked.findIndex(r=>r.team.id===teamId);
+    const gp = golfNetRanked.findIndex(r=>r.id===teamId);
+    const p1 = op===0 && ranked[0]?.netCombined!==null ? 500 : 0;
+    const p2 = op===1 && ranked[1]?.netCombined!==null ? 350 : 0;
+    const p3 = gp===0 && golfNetRanked[0]?.golfNet!==null ? 150 : 0;
+    const sk = skinsTally[teamId] || 0;
+    return p1+p2+p3+sk;
+  }
+
+  const TABS = ['leaderboard','skins','prizes'];
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'var(--bg)',zIndex:200,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+      {/* Header */}
+      <div style={{padding:'14px 16px 10px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between',background:'var(--bg)',flexShrink:0}}>
+        <div>
+          <div style={{fontFamily:'Playfair Display,serif',fontSize:17,color:'var(--gold)'}}>{archive.label}</div>
+          <div style={{fontSize:10,color:'var(--muted)',fontFamily:'DM Mono,monospace'}}>{archive.savedAt?.slice(0,10)} · archived</div>
+        </div>
+        <button className="btn sm sec" onClick={onClose}>✕ Close</button>
+      </div>
+
+      {/* Tabs */}
+      <div style={{display:'flex',borderBottom:'1px solid var(--border)',background:'var(--surface)',flexShrink:0}}>
+        {TABS.map(t=>(
+          <button key={t} onClick={()=>setTab(t)} style={{
+            flex:1,padding:'10px 4px',border:'none',background:'none',cursor:'pointer',
+            fontFamily:'DM Mono,monospace',fontSize:10,textTransform:'uppercase',letterSpacing:'.5px',
+            color:tab===t?'var(--gold)':'var(--muted)',
+            borderBottom:tab===t?'2px solid var(--gold)':'2px solid transparent',
+          }}>
+            {t==='leaderboard'?'🏆 Board':t==='skins'?'💰 Skins':'💵 Prizes'}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
+      <div style={{flex:1,overflowY:'auto',padding:'14px 16px'}}>
+
+        {/* ── LEADERBOARD ── */}
+        {tab==='leaderboard' && (
+          <>
+            <div className="card" style={{padding:'0 14px',marginBottom:12}}>
+              {ranked.map(({team,combined,netCombined,scrambleToPar,proTotal,hcp,n},i)=>{
+                const score = netCombined ?? combined;
+                const {text,cls} = fmt(score);
+                const proCount = tournament.proCount||1;
+                return (
+                  <div key={team.id} className="lb-row" style={{cursor:'default'}}>
+                    <div className={`lb-rank ${i===0?'g':''}`}>{i+1}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div className="lb-name">{team.name}</div>
+                      <div className="lb-players">{team.player1} & {team.player2}</div>
+                      {teamPrize(team.id)>0 && <div style={{fontSize:10,fontFamily:'DM Mono,monospace',color:'var(--green)',marginTop:1}}>💵 ${teamPrize(team.id)}</div>}
+                    </div>
+                    <div className="lb-right">
+                      <div className={`lb-big ${cls}`}>{text}</div>
+                      <div className="lb-detail">
+                        {n>0?`Scr: ${fmt(scrambleToPar).text}`:'No scores'}
+                        {proTotal!==null?` · Pros: ${fmt(proTotal).text}`:''}
+                        {hcp>0?` · HCP -${hcp}`:''}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {/* ── SKINS ── */}
+        {tab==='skins' && (
+          <>
+            <div style={{display:'flex',justifyContent:'space-between',padding:'8px 12px',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:8,marginBottom:12}}>
+              <span style={{fontSize:12,color:'var(--muted)',fontFamily:'DM Mono,monospace'}}>Total Pot</span>
+              <span style={{fontFamily:'DM Mono,monospace',color:'var(--gold)'}}>${totalPot}</span>
+              <span style={{fontSize:12,color:'var(--muted)',fontFamily:'DM Mono,monospace'}}>Per Skin</span>
+              <span style={{fontFamily:'DM Mono,monospace',color:'var(--green)'}}>{skinsWon>0?`$${skinVal}`:'--'}</span>
+            </div>
+            {/* Winnings */}
+            {Object.keys(skinsTally).length > 0 && (
+              <div className="card" style={{marginBottom:12}}>
+                <div className="lbl">Winnings</div>
+                {Object.entries(skinsTally).sort((a,b)=>b[1]-a[1]).map(([id,total])=>{
+                  const t = teams.find(t=>t.id===id);
+                  const holes = skins.filter(s=>s.st==='won'&&s.winner.id===id).map(s=>s.hole);
+                  return t ? (
+                    <div key={id} style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid var(--border)'}}>
+                      <div><div style={{fontWeight:600,fontSize:13}}>{t.name}</div><div style={{fontSize:11,color:'var(--muted)'}}>Holes {holes.join(', ')}</div></div>
+                      <div style={{fontFamily:'DM Mono,monospace',fontSize:17,color:'var(--green)'}}>${total}</div>
+                    </div>
+                  ) : null;
+                })}
+              </div>
+            )}
+            <div className="card" style={{padding:'4px 12px'}}>
+              {skins.map(s=>(
+                <div key={s.hole} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 0',borderBottom:'1px solid var(--border)'}}>
+                  <div style={{fontFamily:'Playfair Display,serif',fontSize:18,color:'var(--gold)',width:22}}>{s.hole}</div>
+                  <div style={{fontSize:10,color:'var(--muted)',fontFamily:'DM Mono,monospace',width:24}}>P{s.par}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    {s.st==='won' && <><div style={{fontWeight:600,fontSize:13,color:'var(--green)'}}>{s.winner.name}</div><div style={{fontSize:10,color:'var(--muted)'}}>Net {s.net} (gross {s.gross})</div></>}
+                    {s.st==='tied' && <><div style={{fontWeight:600,fontSize:12,color:'var(--red)'}}>Tied</div><div style={{fontSize:10,color:'var(--muted)'}}>{s.tied.map(t=>t.name).join(', ')}</div></>}
+                    {s.st==='pending' && <div style={{fontSize:12,color:'var(--muted)',fontStyle:'italic'}}>Not played</div>}
+                  </div>
+                  <div style={{fontFamily:'DM Mono,monospace',fontSize:13,flexShrink:0}}>
+                    {s.st==='won'&&<span style={{color:'var(--green)'}}>${skinVal}</span>}
+                    {s.st==='tied'&&<span style={{color:'var(--muted)',fontSize:11}}>tied</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* ── PRIZES ── */}
+        {tab==='prizes' && (
+          <div className="card" style={{padding:'0 14px'}}>
+            {[...teams]
+              .map(t=>({team:t,total:teamPrize(t.id)}))
+              .sort((a,b)=>b.total-a.total)
+              .map(({team,total},i)=>{
+                const op=ranked.findIndex(r=>r.team.id===team.id);
+                const gp=golfNetRanked.findIndex(r=>r.id===team.id);
+                const p1=op===0&&ranked[0]?.netCombined!==null?500:0;
+                const p2=op===1&&ranked[1]?.netCombined!==null?350:0;
+                const p3=gp===0&&golfNetRanked[0]?.golfNet!==null?150:0;
+                const sk=skinsTally[team.id]||0;
+                return (
+                  <div key={team.id} style={{display:'flex',alignItems:'center',gap:10,padding:'12px 0',borderBottom:'1px solid var(--border)'}}>
+                    <div className={`lb-rank ${i===0?'g':''}`}>{i+1}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div className="lb-name">{team.name}</div>
+                      <div style={{fontSize:10,fontFamily:'DM Mono,monospace',color:'var(--muted)',marginTop:2,display:'flex',flexWrap:'wrap',gap:5}}>
+                        {p1>0&&<span style={{color:'var(--gold)'}}>1st Overall ${p1}</span>}
+                        {p2>0&&<span style={{color:'var(--green)'}}>2nd Overall ${p2}</span>}
+                        {p3>0&&<span style={{color:'#4A9EE0'}}>Golf Net 1st ${p3}</span>}
+                        {sk>0&&<span>Skins ${sk}</span>}
+                        {total===0&&<span>No prizes</span>}
+                      </div>
+                    </div>
+                    <div style={{fontFamily:'DM Mono,monospace',fontSize:20,color:total>0?'var(--green)':'var(--muted)',flexShrink:0}}>{total>0?`$${total}`:'--'}</div>
+                  </div>
+                );
+              })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SetupView({ state, setState, adminMode, setAdminMode, setSyncStatus, syncESPN, syncing, syncMsg, archives, archiveTournament, viewArchive, setViewArchive, showAdminPrompt, setShowAdminPrompt, pwInput, setPwInput, pwError, setPwError }) {
   const { tournament, teams, proScores } = state;
   const [tab, setTab] = useState('tournament');
@@ -519,45 +703,10 @@ function SetupView({ state, setState, adminMode, setAdminMode, setSyncStatus, sy
     </div>
   );
 
-  // Archive viewer modal
-  const archiveViewer = viewArchive && (
-    <div className="modal-bg" onClick={()=>setViewArchive(null)}>
-      <div className="modal" onClick={e=>e.stopPropagation()} style={{maxHeight:'90vh'}}>
-        <div className="modal-hdr">
-          <div>
-            <div style={{fontFamily:'Playfair Display,serif',fontSize:17,color:'var(--gold)'}}>{viewArchive.label}</div>
-            <div style={{fontSize:10,color:'var(--muted)',fontFamily:'DM Mono,monospace'}}>{viewArchive.savedAt?.slice(0,10)}</div>
-          </div>
-          <button className="btn sm sec" onClick={()=>setViewArchive(null)}>✕</button>
-        </div>
-        {(viewArchive.state?.teams||[]).map(t => {
-          const scored = t.scores?.filter(s=>s!==''&&s!=null).length||0;
-          const total  = t.scores?.filter(s=>s!==''&&s!=null).reduce((a,b)=>a+Number(b),0)||0;
-          const parTotal = DEFAULT_PAR.slice(0,scored).reduce((a,b)=>a+b,0);
-          const toPar = scored > 0 ? total - parTotal : null;
-          return (
-            <div key={t.id} style={{display:'flex',justifyContent:'space-between',padding:'9px 0',borderBottom:'1px solid var(--border)'}}>
-              <div>
-                <div style={{fontWeight:600,fontSize:14}}>{t.name}</div>
-                <div style={{fontSize:11,color:'var(--muted)'}}>{t.player1} & {t.player2}</div>
-              </div>
-              <div style={{textAlign:'right'}}>
-                <span className={`sc ${toPar===null?'dim':toPar<0?'under':toPar===0?'even':'over'}`}>
-                  {toPar===null?'--':toPar===0?'E':toPar>0?`+${toPar}`:toPar}
-                </span>
-                <div style={{fontSize:10,color:'var(--muted)',fontFamily:'DM Mono,monospace',marginTop:2}}>thru {scored}</div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-
   return (
     <>
     {adminPrompt}
-    {archiveViewer}
+    {viewArchive && <ArchiveView archive={viewArchive} onClose={()=>setViewArchive(null)} />}
     <div className="page">
       <div style={{height:14}} />
 
@@ -2672,12 +2821,20 @@ export default function App() {
         state: toFirestore({ ...state }),
       };
       const newList = [...archives, snapshot];
-      const [col, docId] = FS_ARCHIVE.split('/');
-      await setDoc(doc(db, col, docId), { list: newList });
+      const [arcCol, arcDoc] = FS_ARCHIVE.split('/');
+      await setDoc(doc(db, arcCol, arcDoc), { list: newList });
       setArchives(newList);
-      // Reset active tournament to blank slate (keep PROS but clear scores/teams)
-      setState({ ...INIT, par: DEFAULT_PAR });
-      alert('Tournament archived! ✓ Starting fresh tournament.');
+
+      // Immediately write blank state to Firestore so all clients reset together
+      const freshState = { ...INIT, par: DEFAULT_PAR };
+      const [col, docId] = FS_DOC.split('/');
+      await setDoc(doc(db, col, docId), { state: toFirestore(freshState), updatedAt: Date.now() });
+      saveLocal(freshState);
+      setState(freshState);
+      // Reset comparison so save effect doesn't try to re-save old state
+      lastFirestoreState.current = JSON.stringify(espnStrip(freshState));
+
+      alert('Tournament archived! ✓ All devices will reset to a new tournament.');
     } catch(e) {
       alert('Archive failed: ' + (e?.message || e));
     }

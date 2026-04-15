@@ -65,8 +65,9 @@ const HOLE_HCP       = [3,15,17,1,13,7,11,5,9, 16,2,14,12,8,10,4,6,18];
 const HOLE_YDS       = [356,150,262,156,158,397,150,168,301, 143,333,97,154,260,129,321,149,118];
 const COURSE_RATING  = 59.6;
 const COURSE_SLOPE   = 100;
-const STORAGE_KEY    = 'scramble_golf_v9';   // local cache key
-const FS_DOC         = 'tournament/state';    // Firestore path
+const STORAGE_KEY    = 'scramble_golf_v9';
+const FS_DOC         = 'tournament/state';
+const FS_ARCHIVE     = 'tournament/archive';
 const ESPN_API = 'https://site.web.api.espn.com/apis/site/v2/sports/golf/leaderboard?league=pga';
 const ADMIN_PASSWORD = 'Eagle47';
 
@@ -99,10 +100,10 @@ function namesMatch(espnName, ourName) {
 }
 
 const INIT = {
-  tournament: { name:'Saturday Scramble', pgaEvent:'', date:'', skinsPerHole:20, buyIn:100, proCount:1 },
+  tournament: { name:'Saturday Scramble', pgaEvent:'', date:'', skinsPerHole:400, buyIn:100, proCount:1, includeHandicap:false },
   teams: [],
-  proScores: {}, // proId → number (to par, e.g. -5)
-  proHoles: {}, // proId → number (holes played today, 0–18)
+  proScores: {},
+  proHoles: {},
   par: DEFAULT_PAR,
 };
 
@@ -298,7 +299,8 @@ function calcTeam(team, proScores, tournament, proHoles = {}) {
     proTotal;
 
   const hcp = teamHandicap(team.hcp1||0, team.hcp2||0);
-  const netCombined = combined !== null ? combined - hcp : null;
+  const applyHcp = tournament?.includeHandicap === true;
+  const netCombined = (combined !== null && applyHcp) ? combined - hcp : combined;
 
   return { scrambleToPar, proTotal, combined, netCombined, hcp, n };
 }
@@ -464,7 +466,7 @@ html,body{background:var(--bg);color:var(--cream);font-family:'Inter',sans-serif
 
 // ── VIEWS ──────────────────────────────────────────────────────────────────
 
-function SetupView({ state, setState, adminMode, setSyncStatus, syncESPN, syncing, syncMsg }) {
+function SetupView({ state, setState, adminMode, setAdminMode, setSyncStatus, syncESPN, syncing, syncMsg, archives, archiveTournament, viewArchive, setViewArchive, showAdminPrompt, setShowAdminPrompt, pwInput, setPwInput, pwError, setPwError }) {
   const { tournament, teams, proScores } = state;
   const [tab, setTab] = useState('tournament');
   const [newTeam, setNewTeam] = useState({ name:'', player1:'', player2:'', hcp1:0, hcp2:0 });
@@ -498,9 +500,77 @@ function SetupView({ state, setState, adminMode, setSyncStatus, syncESPN, syncin
 
   const filteredPros = PROS.filter(p => p.name.toLowerCase().includes(proSearch.toLowerCase()));
 
+  // Admin password prompt (moved from App header to Setup page)
+  const adminPrompt = showAdminPrompt && (
+    <div className="modal-bg" onClick={()=>{setShowAdminPrompt(false);setPwInput('');setPwError(false);}}>
+      <div className="modal" onClick={e=>e.stopPropagation()} style={{paddingBottom:36}}>
+        <div className="modal-hdr">
+          <div style={{fontFamily:'Playfair Display,serif',fontSize:17,color:'var(--gold)'}}>Admin Access</div>
+          <button className="btn sm sec" onClick={()=>{setShowAdminPrompt(false);setPwInput('');setPwError(false);}}>✕</button>
+        </div>
+        <label className="lbl">Password</label>
+        <input className="inp" type="password" placeholder="Enter admin password" value={pwInput} autoFocus
+          onChange={e=>{setPwInput(e.target.value);setPwError(false);}}
+          onKeyDown={e=>{if(e.key==='Enter'){if(pwInput===ADMIN_PASSWORD){setAdminMode(true);setShowAdminPrompt(false);setPwInput('');setPwError(false);}else setPwError(true);}}}
+          style={pwError?{borderColor:'var(--red)'}:{}}/>
+        {pwError && <div style={{fontSize:11,color:'var(--red)',marginTop:-4,marginBottom:8,fontFamily:'DM Mono,monospace'}}>Incorrect password</div>}
+        <button className="btn" onClick={()=>{if(pwInput===ADMIN_PASSWORD){setAdminMode(true);setShowAdminPrompt(false);setPwInput('');setPwError(false);}else setPwError(true);}}>Unlock</button>
+      </div>
+    </div>
+  );
+
+  // Archive viewer modal
+  const archiveViewer = viewArchive && (
+    <div className="modal-bg" onClick={()=>setViewArchive(null)}>
+      <div className="modal" onClick={e=>e.stopPropagation()} style={{maxHeight:'90vh'}}>
+        <div className="modal-hdr">
+          <div>
+            <div style={{fontFamily:'Playfair Display,serif',fontSize:17,color:'var(--gold)'}}>{viewArchive.label}</div>
+            <div style={{fontSize:10,color:'var(--muted)',fontFamily:'DM Mono,monospace'}}>{viewArchive.savedAt?.slice(0,10)}</div>
+          </div>
+          <button className="btn sm sec" onClick={()=>setViewArchive(null)}>✕</button>
+        </div>
+        {(viewArchive.state?.teams||[]).map(t => {
+          const scored = t.scores?.filter(s=>s!==''&&s!=null).length||0;
+          const total  = t.scores?.filter(s=>s!==''&&s!=null).reduce((a,b)=>a+Number(b),0)||0;
+          const parTotal = DEFAULT_PAR.slice(0,scored).reduce((a,b)=>a+b,0);
+          const toPar = scored > 0 ? total - parTotal : null;
+          return (
+            <div key={t.id} style={{display:'flex',justifyContent:'space-between',padding:'9px 0',borderBottom:'1px solid var(--border)'}}>
+              <div>
+                <div style={{fontWeight:600,fontSize:14}}>{t.name}</div>
+                <div style={{fontSize:11,color:'var(--muted)'}}>{t.player1} & {t.player2}</div>
+              </div>
+              <div style={{textAlign:'right'}}>
+                <span className={`sc ${toPar===null?'dim':toPar<0?'under':toPar===0?'even':'over'}`}>
+                  {toPar===null?'--':toPar===0?'E':toPar>0?`+${toPar}`:toPar}
+                </span>
+                <div style={{fontSize:10,color:'var(--muted)',fontFamily:'DM Mono,monospace',marginTop:2}}>thru {scored}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
   return (
+    <>
+    {adminPrompt}
+    {archiveViewer}
     <div className="page">
       <div style={{height:14}} />
+
+      {/* Admin button — lives on Setup page only */}
+      <div className="sec" style={{paddingBottom:0}}>
+        <button className="btn sec" style={{marginBottom:8}} onClick={() => {
+          if(adminMode) setAdminMode(false);
+          else { setPwInput(''); setPwError(false); setShowAdminPrompt(true); }
+        }}>
+          {adminMode ? '🔓 Admin Mode — tap to lock' : '🔒 Unlock Admin'}
+        </button>
+      </div>
+
       <div className="tabs">
         {['tournament','teams','pros'].map(t => (
           <button key={t} className={`tab ${tab===t?'on':''}`} onClick={()=>setTab(t)}>
@@ -533,20 +603,27 @@ function SetupView({ state, setState, adminMode, setSyncStatus, syncESPN, syncin
               <label className="lbl">Pro Scores Used (Best N of 6)</label>
               <div style={{display:'flex',gap:8,marginBottom:8}}>
                 {[1,2,3].map(n=>(
-                  <button key={n}
-                    className={`btn sm ${(tournament.proCount||1)===n?'':'sec'}`}
-                    style={{flex:1}}
-                    onClick={()=>setT('proCount',n)}>
+                  <button key={n} className={`btn sm ${(tournament.proCount||1)===n?'':'sec'}`} style={{flex:1}} onClick={()=>setT('proCount',n)}>
                     Best {n}
                   </button>
                 ))}
               </div>
+              <div style={{fontSize:11,color:'var(--muted)',marginBottom:12,lineHeight:1.5}}>
+                {(tournament.proCount||1)===1?'✓ Recommended — scramble decides the winner, pros add a bonus':(tournament.proCount||1)===2?'Moderate — draft quality matters more, less chance of blowout':'Original — 3 pros carry significant weight'}
+              </div>
+
+              {/* Handicap toggle */}
+              <label className="lbl">Overall Leaderboard Handicap</label>
+              <div style={{display:'flex',gap:8,marginBottom:8}}>
+                <button className={`btn sm ${!tournament.includeHandicap?'':'sec'}`} style={{flex:1}} onClick={()=>setT('includeHandicap',false)}>
+                  Off — Gross
+                </button>
+                <button className={`btn sm ${tournament.includeHandicap?'':'sec'}`} style={{flex:1}} onClick={()=>setT('includeHandicap',true)}>
+                  On — Net
+                </button>
+              </div>
               <div style={{fontSize:11,color:'var(--muted)',marginBottom:4,lineHeight:1.5}}>
-                {(tournament.proCount||1)===1
-                  ? '✓ Recommended — scramble decides the winner, pros add a bonus'
-                  : (tournament.proCount||1)===2
-                  ? 'Moderate — draft quality matters more, less chance of blowout'
-                  : 'Original — 3 pros carry significant weight'}
+                {tournament.includeHandicap ? '✓ Handicaps applied — Overall Net scores shown' : 'Handicaps off — good for tracking pros before scramble starts'}
               </div>
             </div>
           ) : (
@@ -556,10 +633,11 @@ function SetupView({ state, setState, adminMode, setSyncStatus, syncESPN, syncin
                 ['PGA Event', tournament.pgaEvent],
                 ['Date', tournament.date],
                 ['Teams', `${teams.length} teams`],
-                ['Skins', `$${tournament.skinsPerHole}/hole`],
+                ['Skins Pot', `$${tournament.skinsPerHole}`],
                 ['Overall Buy-In', `$${tournament.buyIn}/team`],
                 ['Overall Pot', `$${teams.length * tournament.buyIn}`],
                 ['Pro Scoring', `Best ${tournament.proCount||1} of 6 pros`],
+                ['Handicap', tournament.includeHandicap ? 'Applied (Net)' : 'Off (Gross)'],
                 ['Course Rating', `${COURSE_RATING} / Slope ${COURSE_SLOPE}`],
                 ['Par', `${DEFAULT_PAR.reduce((a,b)=>a+b,0)}`],
               ].map(([k,v]) => v && (
@@ -571,24 +649,55 @@ function SetupView({ state, setState, adminMode, setSyncStatus, syncESPN, syncin
             </div>
           )}
           {adminMode && (
-            <button className="btn sec" style={{marginTop:4}} onClick={async ()=>{
-              setSyncStatus('syncing');
-              try {
-                const clean = toFirestore(JSON.parse(JSON.stringify(state)));
-                const [col, docId] = FS_DOC.split('/');
-                await setDoc(doc(db, col, docId), { state: clean, updatedAt: Date.now() });
-                setSyncStatus('live');
-                alert('Saved! ✓ All devices will update within seconds.');
-              } catch(e) {
-                const msg = e?.code || e?.message || 'unknown';
-                setSyncStatus('error:' + msg);
-                alert('Save failed: ' + msg);
-              }
-            }}>
-              ☁️ Force Save to Cloud
-            </button>
+            <div style={{display:'flex',gap:8,marginTop:4}}>
+              <button className="btn sec" style={{flex:2}} onClick={async ()=>{
+                setSyncStatus('syncing');
+                try {
+                  const clean = toFirestore(JSON.parse(JSON.stringify(state)));
+                  const [col, docId] = FS_DOC.split('/');
+                  await setDoc(doc(db, col, docId), { state: clean, updatedAt: Date.now() });
+                  setSyncStatus('live');
+                  alert('Saved! ✓ All devices will update within seconds.');
+                } catch(e) {
+                  const msg = e?.code || e?.message || 'unknown';
+                  setSyncStatus('error:' + msg);
+                  alert('Save failed: ' + msg);
+                }
+              }}>☁️ Force Save</button>
+              <button className="btn danger" style={{flex:1,fontSize:11}} onClick={()=>{
+                if(window.confirm('Archive this tournament and start fresh? This cannot be undone.')) archiveTournament();
+              }}>📦 Archive & New</button>
+            </div>
           )}
-          {!adminMode && <div className="alert">Tap "🔒 Admin" in the header to edit settings.</div>}
+          {!adminMode && archives.length > 0 && (
+            <div className="card" style={{marginTop:8}}>
+              <div className="lbl">Past Tournaments</div>
+              {[...archives].reverse().map(a=>(
+                <div key={a.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:'1px solid var(--border)'}}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:600}}>{a.label}</div>
+                    <div style={{fontSize:10,color:'var(--muted)',fontFamily:'DM Mono,monospace'}}>{a.savedAt?.slice(0,10)}</div>
+                  </div>
+                  <button className="btn sm sec" onClick={()=>setViewArchive(a)}>View</button>
+                </div>
+              ))}
+            </div>
+          )}
+          {adminMode && archives.length > 0 && (
+            <div className="card" style={{marginTop:8}}>
+              <div className="lbl">Past Tournaments</div>
+              {[...archives].reverse().map(a=>(
+                <div key={a.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:'1px solid var(--border)'}}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:600}}>{a.label}</div>
+                    <div style={{fontSize:10,color:'var(--muted)',fontFamily:'DM Mono,monospace'}}>{a.savedAt?.slice(0,10)}</div>
+                  </div>
+                  <button className="btn sm sec" onClick={()=>setViewArchive(a)}>View</button>
+                </div>
+              ))}
+            </div>
+          )}
+          {!adminMode && archives.length === 0 && <div className="alert" style={{marginTop:8}}>Go to Admin to edit settings or archive tournaments.</div>}
         </div>
       )}
 
@@ -736,10 +845,9 @@ function SetupView({ state, setState, adminMode, setSyncStatus, syncESPN, syncin
         </div>
       )}
     </div>
+  </>
   );
-}
-
-// Distinct colors for up to 10 teams — works on the dark background
+} — works on the dark background
 const TEAM_COLORS = [
   '#52C462','#4A9EE0','#E05252','#E8C96B','#A855F7',
   '#F97316','#EC4899','#14B8A6','#84CC16','#F59E0B',
@@ -805,7 +913,7 @@ function ProsView({ state }) {
     <div className="page">
       <div style={{height:14}}/>
       <div className="tabs">
-        <button className={`tab ${tab==='teams'?'on':''}`} onClick={()=>setTab('teams')}>My Teams</button>
+        <button className={`tab ${tab==='teams'?'on':''}`} onClick={()=>setTab('teams')}>All Teams</button>
         <button className={`tab ${tab==='field'?'on':''}`} onClick={()=>setTab('field')}>Masters Field</button>
       </div>
 
@@ -1542,9 +1650,19 @@ function LeaderboardView({ state }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[teams,proScores,tournament,proHoles,mode]);
 
-  const modeLabel = mode === 'overall_net' ? `Overall Net (Scramble + Pros)` :
-                    mode === 'golf_gross'  ? 'Golf Gross (Scramble only)' :
-                    'Golf Net (Scramble − Handicap)';
+  const PRIZES = {
+    overall_net: { rank1: 500, rank2: 350, label: 'Overall Net' },
+    golf_net:    { rank1: 150, rank2: null, label: 'Golf Net' },
+    golf_gross:  { rank1: null, rank2: null, label: 'Golf Gross' },
+  };
+
+  const MODES = [
+    { id:'overall_net', label:'Overall Net' },
+    { id:'golf_net',    label:'Golf Net'    },
+    { id:'golf_gross',  label:'Golf Gross'  },
+  ];
+
+  const modeLabel = PRIZES[mode]?.label || mode;
 
   return (
     <div className="page">
@@ -1555,11 +1673,7 @@ function LeaderboardView({ state }) {
 
         {/* Mode selector */}
         <div style={{display:'flex',gap:6,marginBottom:10}}>
-          {[
-            {id:'overall_net', label:'Overall Net'},
-            {id:'golf_gross',  label:'Golf Gross'},
-            {id:'golf_net',    label:'Golf Net'},
-          ].map(m=>(
+          {MODES.map(m=>(
             <button key={m.id}
               onClick={()=>setMode(m.id)}
               style={{
@@ -1574,8 +1688,24 @@ function LeaderboardView({ state }) {
           ))}
         </div>
 
+        {/* Prize info bar */}
+        {(PRIZES[mode]?.rank1 || PRIZES[mode]?.rank2) && (
+          <div style={{display:'flex',gap:6,marginBottom:10}}>
+            {PRIZES[mode]?.rank1 && <div style={{flex:1,padding:'6px 8px',background:'rgba(201,168,76,.08)',border:'1px solid rgba(201,168,76,.2)',borderRadius:7,textAlign:'center'}}>
+              <div style={{fontFamily:'DM Mono,monospace',fontSize:9,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.5px'}}>🥇 1st</div>
+              <div style={{fontFamily:'DM Mono,monospace',fontSize:15,color:'var(--gold)',fontWeight:700}}>${PRIZES[mode].rank1}</div>
+            </div>}
+            {PRIZES[mode]?.rank2 && <div style={{flex:1,padding:'6px 8px',background:'rgba(82,196,98,.06)',border:'1px solid rgba(82,196,98,.15)',borderRadius:7,textAlign:'center'}}>
+              <div style={{fontFamily:'DM Mono,monospace',fontSize:9,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.5px'}}>🥈 2nd</div>
+              <div style={{fontFamily:'DM Mono,monospace',fontSize:15,color:'var(--green)',fontWeight:700}}>${PRIZES[mode].rank2}</div>
+            </div>}
+          </div>
+        )}
+
         <div className="alert green" style={{marginBottom:10,fontSize:11}}>
-          {modeLabel} · tap row for details
+          {mode==='overall_net' ? `Scramble + top ${proCount} pro${proCount>1?'s':''} − handicap` :
+           mode==='golf_net'    ? 'Scramble score − handicap only' :
+           'Scramble gross score only'} · tap row for details
         </div>
 
         {ranked.length===0
@@ -1799,6 +1929,95 @@ function SkinsView({ state }) {
               </div>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PrizesView({ state }) {
+  const { teams, par, tournament, proScores, proHoles = {} } = state;
+  const totalPot = tournament.skinsPerHole || 400;
+  const buyIn    = tournament.buyIn || 0;
+  const overallPot = teams.length * buyIn;
+
+  // Calc skins
+  const skins = useMemo(()=>calcSkins(teams,par,totalPot),[teams,par,totalPot]);
+  const skinsWon  = skins.filter(s=>s.st==='won').length;
+  const skinValue = skinsWon > 0 ? Math.round((totalPot/skinsWon)*100)/100 : 0;
+  const skinsTally = {};
+  skins.forEach(s=>{
+    if(s.st==='won'){
+      const id=s.winner.id;
+      if(!skinsTally[id]) skinsTally[id]={team:s.winner,total:0};
+      skinsTally[id].total = parseFloat((skinsTally[id].total+skinValue).toFixed(2));
+    }
+  });
+
+  // Overall net ranking
+  const overallRanked = [...teams]
+    .map(t=>({team:t,...calcTeam(t,proScores,tournament,proHoles)}))
+    .sort((a,b)=>{
+      const aS=a.netCombined, bS=b.netCombined;
+      if(aS===null&&bS===null) return 0;
+      if(aS===null) return 1; if(bS===null) return -1;
+      return aS-bS;
+    });
+
+  // Golf net ranking (scramble - hcp)
+  const golfNetRanked = [...teams]
+    .map(t=>{ const r=calcTeam(t,proScores,tournament,proHoles); return {...r,team:t,golfNet:r.scrambleToPar!==null?r.scrambleToPar-r.hcp:null}; })
+    .sort((a,b)=>{
+      if(a.golfNet===null&&b.golfNet===null) return 0;
+      if(a.golfNet===null) return 1; if(b.golfNet===null) return -1;
+      return a.golfNet-b.golfNet;
+    });
+
+  // Combine all prizes per team
+  const allTeams = teams.map(t=>{
+    const overallPos = overallRanked.findIndex(r=>r.team.id===t.id);
+    const golfNetPos = golfNetRanked.findIndex(r=>r.team.id===t.id);
+    const overall1   = overallPos === 0 && overallRanked[0]?.netCombined !== null ? 500 : 0;
+    const overall2   = overallPos === 1 && overallRanked[1]?.netCombined !== null ? 350 : 0;
+    const golfNet1   = golfNetPos === 0 && golfNetRanked[0]?.golfNet !== null ? 150 : 0;
+    const skins$     = skinsTally[t.id]?.total || 0;
+    const total      = overall1 + overall2 + golfNet1 + skins$;
+    return { team:t, overall1, overall2, golfNet1, skins:skins$, total };
+  }).sort((a,b)=>b.total-a.total);
+
+  return (
+    <div className="page">
+      <div className="sec">
+        <div className="sh">Prize Summary</div>
+        <div className="alert green" style={{fontSize:11,marginBottom:12}}>
+          Overall 1st $500 · Overall 2nd $350 · Golf Net 1st $150 · Skins ${totalPot}
+        </div>
+
+        <div className="card" style={{padding:'0 14px'}}>
+          {allTeams.map(({team,overall1,overall2,golfNet1,skins:s$,total},i)=>(
+            <div key={team.id} style={{display:'flex',alignItems:'center',gap:10,padding:'12px 0',borderBottom:'1px solid var(--border)'}}>
+              <div className={`lb-rank ${i===0?'g':''}`}>{i+1}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div className="lb-name">{team.name}</div>
+                <div style={{fontSize:10,fontFamily:'DM Mono,monospace',color:'var(--muted)',marginTop:2,display:'flex',flexWrap:'wrap',gap:6}}>
+                  {overall1>0 && <span style={{color:'var(--gold)'}}>1st Overall ${overall1}</span>}
+                  {overall2>0 && <span style={{color:'var(--green)'}}>2nd Overall ${overall2}</span>}
+                  {golfNet1>0 && <span style={{color:'#4A9EE0'}}>Golf Net 1st ${golfNet1}</span>}
+                  {s$>0       && <span style={{color:'var(--muted)'}}>Skins ${s$}</span>}
+                  {total===0  && <span>No prizes yet</span>}
+                </div>
+              </div>
+              <div style={{fontFamily:'DM Mono,monospace',fontSize:20,color:total>0?'var(--green)':'var(--muted)',flexShrink:0}}>
+                {total>0?`$${total}`:'--'}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{padding:'12px 0',textAlign:'center'}}>
+          <div style={{fontSize:10,color:'var(--muted)',fontFamily:'DM Mono,monospace'}}>
+            Total prize pool: ${overallPot + totalPot}
+          </div>
         </div>
       </div>
     </div>
@@ -2294,6 +2513,8 @@ export default function App() {
   const [syncing, setSyncing]     = useState(false);
   const [syncMsg, setSyncMsg]     = useState('');
   const [selScoreTeam, setSelScoreTeam] = useState('');
+  const [archives, setArchives]   = useState([]); // past tournaments
+  const [viewArchive, setViewArchive] = useState(null); // archive snapshot being viewed
 
   async function syncESPN() {
     setSyncing(true); setSyncMsg('Fetching ESPN…');
@@ -2349,6 +2570,39 @@ export default function App() {
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── Load archives once on mount ─────────────────────────────────────
+  useEffect(() => {
+    async function loadArchives() {
+      try {
+        const [col, docId] = FS_ARCHIVE.split('/');
+        const snap = await getDoc(doc(db, col, docId));
+        if (snap.exists()) setArchives(snap.data().list || []);
+      } catch(e) { console.warn('Archive load failed:', e); }
+    }
+    loadArchives();
+  }, []);
+
+  // Save current tournament to archive and reset to a new empty tournament
+  async function archiveTournament() {
+    try {
+      const snapshot = {
+        id: Date.now().toString(),
+        savedAt: new Date().toISOString(),
+        label: `${state.tournament.name || 'Tournament'} · ${state.tournament.date || ''}`.trim().replace(/·\s*$/, ''),
+        state: toFirestore({ ...state }),
+      };
+      const newList = [...archives, snapshot];
+      const [col, docId] = FS_ARCHIVE.split('/');
+      await setDoc(doc(db, col, docId), { list: newList });
+      setArchives(newList);
+      // Reset active tournament to blank slate (keep PROS but clear scores/teams)
+      setState({ ...INIT, par: DEFAULT_PAR });
+      alert('Tournament archived! ✓ Starting fresh tournament.');
+    } catch(e) {
+      alert('Archive failed: ' + (e?.message || e));
+    }
+  }
 
   // ── ESPN-field stripping helper ──────────────────────────────────────
   // proScores and proHoles are ESPN-derived. We NEVER use them to decide
@@ -2558,6 +2812,7 @@ export default function App() {
 
   const TABS = [
     { id: 'leaderboard', label: 'Board',  ico: '🏆' },
+    { id: 'prizes',      label: 'Prizes', ico: '💵' },
     { id: 'skins',       label: 'Skins',  ico: '💰' },
     { id: 'scores',      label: 'Scores', ico: '✏️' },
     { id: 'stats',       label: 'Stats',  ico: '📈' },
@@ -2580,38 +2835,6 @@ export default function App() {
 
   return (
     <div className="app">
-      {/* Admin password prompt */}
-      {showAdminPrompt && (
-        <div className="modal-bg" onClick={()=>{setShowAdminPrompt(false);setPwInput('');setPwError(false);}}>
-          <div className="modal" onClick={e=>e.stopPropagation()} style={{paddingBottom:36}}>
-            <div className="modal-hdr">
-              <div style={{fontFamily:'Playfair Display,serif',fontSize:17,color:'var(--gold)'}}>Admin Access</div>
-              <button className="btn sm sec" onClick={()=>{setShowAdminPrompt(false);setPwInput('');setPwError(false);}}>✕</button>
-            </div>
-            <label className="lbl">Password</label>
-            <input
-              className="inp"
-              type="password"
-              placeholder="Enter admin password"
-              value={pwInput}
-              autoFocus
-              onChange={e=>{setPwInput(e.target.value);setPwError(false);}}
-              onKeyDown={e=>{
-                if(e.key==='Enter'){
-                  if(pwInput===ADMIN_PASSWORD){setAdminMode(true);setShowAdminPrompt(false);setPwInput('');setPwError(false);}
-                  else setPwError(true);
-                }
-              }}
-              style={pwError?{borderColor:'var(--red)'}:{}}
-            />
-            {pwError && <div style={{fontSize:11,color:'var(--red)',marginTop:-4,marginBottom:8,fontFamily:'DM Mono,monospace'}}>Incorrect password</div>}
-            <button className="btn" onClick={()=>{
-              if(pwInput===ADMIN_PASSWORD){setAdminMode(true);setShowAdminPrompt(false);setPwInput('');setPwError(false);}
-              else setPwError(true);
-            }}>Unlock</button>
-          </div>
-        </div>
-      )}
 
       <div className="hdr">
         <div className="hdr-left">
@@ -2625,19 +2848,14 @@ export default function App() {
             </span>
           </p>
         </div>
-        <button className="btn sm sec" style={{ width: 'auto' }} onClick={() => {
-          if(adminMode) setAdminMode(false);
-          else { setPwInput(''); setPwError(false); setShowAdminPrompt(true); }
-        }}>
-          {adminMode ? '🔓 Admin' : '🔒 Admin'}
-        </button>
       </div>
 
-      {view === 'setup'       && <SetupView      state={state} setState={setState} adminMode={adminMode} setSyncStatus={setSyncStatus} syncESPN={syncESPN} syncing={syncing} syncMsg={syncMsg} />}
+      {view === 'setup'       && <SetupView      state={state} setState={setState} adminMode={adminMode} setAdminMode={setAdminMode} setSyncStatus={setSyncStatus} syncESPN={syncESPN} syncing={syncing} syncMsg={syncMsg} archives={archives} archiveTournament={archiveTournament} viewArchive={viewArchive} setViewArchive={setViewArchive} showAdminPrompt={showAdminPrompt} setShowAdminPrompt={setShowAdminPrompt} pwInput={pwInput} setPwInput={setPwInput} pwError={pwError} setPwError={setPwError} />}
       {view === 'pros'        && <ProsView        state={state} />}
       {view === 'scores'      && <ScoresView      state={state} setState={setState} selTeam={selScoreTeam} setSelTeam={setSelScoreTeam} />}
       {view === 'leaderboard' && <LeaderboardView state={state} />}
-      {view === 'skins'       && <SkinsView       state={state} />}
+      {view === 'prizes'      && <PrizesView       state={state} />}
+      {view === 'skins'       && <SkinsView         state={state} />}
       {view === 'stats'       && <StatsView       state={state} />}
 
       <nav className="bnav">

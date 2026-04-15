@@ -369,9 +369,9 @@ const CSS = `
 html,body{background:var(--bg);color:var(--cream);font-family:'Inter',sans-serif;overflow-x:hidden;}
 .app{max-width:480px;margin:0 auto;min-height:100vh;padding-bottom:calc(68px + env(safe-area-inset-bottom));overflow-x:hidden;}
 /* Header */
-.hdr{padding:14px 16px 10px;background:var(--bg);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;}
-.hdr-left h1{font-family:'Playfair Display',serif;font-size:19px;color:var(--gold);letter-spacing:.3px;}
-.hdr-left p{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);margin-top:2px;}
+.hdr{padding:12px 16px 10px;background:var(--bg);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:30;text-align:center;}
+.hdr h1{font-family:'Playfair Display',serif;font-size:21px;color:var(--gold);letter-spacing:.3px;}
+.hdr p{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);margin-top:2px;}
 /* Bottom nav */
 .bnav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:var(--surface);border-top:1px solid var(--border);display:flex;z-index:100;padding-bottom:env(safe-area-inset-bottom);}
 .nb{flex:1;padding:9px 2px 8px;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.5px;text-transform:uppercase;transition:color .2s;}
@@ -622,8 +622,22 @@ function SetupView({ state, setState, adminMode, setAdminMode, setSyncStatus, sy
                   On — Net
                 </button>
               </div>
-              <div style={{fontSize:11,color:'var(--muted)',marginBottom:4,lineHeight:1.5}}>
+              <div style={{fontSize:11,color:'var(--muted)',marginBottom:12,lineHeight:1.5}}>
                 {tournament.includeHandicap ? '✓ Handicaps applied — Overall Net scores shown' : 'Handicaps off — good for tracking pros before scramble starts'}
+              </div>
+
+              {/* Lock toggle — stops ESPN auto-sync to preserve final scores */}
+              <label className="lbl">Tournament Status</label>
+              <div style={{display:'flex',gap:8,marginBottom:4}}>
+                <button className={`btn sm ${!tournament.tournamentLocked?'':'sec'}`} style={{flex:1}} onClick={()=>setT('tournamentLocked',false)}>
+                  🔄 Live
+                </button>
+                <button className={`btn sm ${tournament.tournamentLocked?'danger':'sec'}`} style={{flex:1}} onClick={()=>setT('tournamentLocked',true)}>
+                  🔒 Lock Final
+                </button>
+              </div>
+              <div style={{fontSize:11,color:tournament.tournamentLocked?'var(--red)':'var(--muted)',marginBottom:4,lineHeight:1.5}}>
+                {tournament.tournamentLocked ? '🔒 Locked — ESPN sync stopped, scores are final' : 'Live — ESPN syncing every 60s'}
               </div>
             </div>
           ) : (
@@ -847,8 +861,9 @@ function SetupView({ state, setState, adminMode, setAdminMode, setSyncStatus, sy
     </div>
   </>
   );
-} 
-// Distinct colors for 10 teams — works on the dark background
+}
+
+// Distinct colors for up to 10 teams — works on the dark background
 const TEAM_COLORS = [
   '#52C462','#4A9EE0','#E05252','#E8C96B','#A855F7',
   '#F97316','#EC4899','#14B8A6','#84CC16','#F59E0B',
@@ -1655,15 +1670,43 @@ function LeaderboardView({ state }) {
     overall_net: { rank1: 500, rank2: 350, label: 'Overall Net' },
     golf_net:    { rank1: 150, rank2: null, label: 'Golf Net' },
     golf_gross:  { rank1: null, rank2: null, label: 'Golf Gross' },
+    prizes:      { rank1: null, rank2: null, label: 'Prizes' },
   };
 
   const MODES = [
     { id:'overall_net', label:'Overall Net' },
     { id:'golf_net',    label:'Golf Net'    },
     { id:'golf_gross',  label:'Golf Gross'  },
+    { id:'prizes',      label:'Prizes 💵'   },
   ];
 
   const modeLabel = PRIZES[mode]?.label || mode;
+
+  // Compute prizes per team (used in prizes mode and inline labels)
+  const totalSkinsPot = state.tournament?.skinsPerHole || 400;
+  const skinsList = useMemo(()=>calcSkins(teams,state.par||DEFAULT_PAR,totalSkinsPot),[teams,state.par,totalSkinsPot]);
+  const skinsWonCount = skinsList.filter(s=>s.st==='won').length;
+  const skinVal = skinsWonCount > 0 ? Math.round((totalSkinsPot/skinsWonCount)*100)/100 : 0;
+  const skinsTally = {};
+  skinsList.forEach(s=>{ if(s.st==='won'){ const id=s.winner.id; if(!skinsTally[id]) skinsTally[id]=0; skinsTally[id]=parseFloat((skinsTally[id]+skinVal).toFixed(2)); } });
+
+  // Overall net ranking for prize assignment
+  const overallRankedIds = [...teams]
+    .map(t=>({id:t.id,...calcTeam(t,proScores,tournament,proHoles)}))
+    .sort((a,b)=>{ const aS=a.netCombined,bS=b.netCombined; if(aS===null&&bS===null)return 0; if(aS===null)return 1; if(bS===null)return -1; return aS-bS; });
+  const golfNetRankedIds = [...teams]
+    .map(t=>{ const r=calcTeam(t,proScores,tournament,proHoles); return {...r,id:t.id,golfNet:r.scrambleToPar!==null?r.scrambleToPar-r.hcp:null}; })
+    .sort((a,b)=>{ if(a.golfNet===null&&b.golfNet===null)return 0; if(a.golfNet===null)return 1; if(b.golfNet===null)return -1; return a.golfNet-b.golfNet; });
+
+  function teamPrize(teamId) {
+    const overallPos = overallRankedIds.findIndex(r=>r.id===teamId);
+    const golfNetPos = golfNetRankedIds.findIndex(r=>r.id===teamId);
+    const p1 = overallPos===0 && overallRankedIds[0]?.netCombined!==null ? 500 : 0;
+    const p2 = overallPos===1 && overallRankedIds[1]?.netCombined!==null ? 350 : 0;
+    const p3 = golfNetPos===0 && golfNetRankedIds[0]?.golfNet!==null ? 150 : 0;
+    const sk = skinsTally[teamId] || 0;
+    return { p1, p2, p3, sk, total: p1+p2+p3+sk };
+  }
 
   return (
     <div className="page">
@@ -1711,6 +1754,34 @@ function LeaderboardView({ state }) {
 
         {ranked.length===0
           ? <div className="alert">No teams yet. Go to Setup to add teams.</div>
+          : mode === 'prizes'
+          ? (
+            // ── Prizes mode ──────────────────────────────────────────────
+            <div className="card" style={{padding:'0 14px'}}>
+              {[...teams]
+                .map(t=>({team:t,...teamPrize(t.id)}))
+                .sort((a,b)=>b.total-a.total)
+                .map(({team,p1,p2,p3,sk,total},i)=>(
+                  <div key={team.id} style={{display:'flex',alignItems:'center',gap:10,padding:'12px 0',borderBottom:'1px solid var(--border)'}}>
+                    <div className={`lb-rank ${i===0?'g':''}`}>{i+1}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div className="lb-name">{team.name}</div>
+                      <div style={{fontSize:10,fontFamily:'DM Mono,monospace',color:'var(--muted)',marginTop:2,display:'flex',flexWrap:'wrap',gap:5}}>
+                        {p1>0&&<span style={{color:'var(--gold)'}}>1st Overall ${p1}</span>}
+                        {p2>0&&<span style={{color:'var(--green)'}}>2nd Overall ${p2}</span>}
+                        {p3>0&&<span style={{color:'#4A9EE0'}}>Golf Net 1st ${p3}</span>}
+                        {sk>0&&<span>Skins ${sk}</span>}
+                        {total===0&&<span>No prizes yet</span>}
+                      </div>
+                    </div>
+                    <div style={{fontFamily:'DM Mono,monospace',fontSize:20,color:total>0?'var(--green)':'var(--muted)',flexShrink:0}}>
+                      {total>0?`$${total}`:'--'}
+                    </div>
+                  </div>
+                ))
+              }
+            </div>
+          )
           : <div className="card" style={{padding:'0 14px'}}>
             {ranked.map(({team,combined,netCombined,scrambleToPar,proTotal,hcp,n},i)=>{
               const displayScore = getScore({netCombined,scrambleToPar,hcp,combined});
@@ -1726,6 +1797,7 @@ function LeaderboardView({ state }) {
                   .slice(0, proCount)
               );
               const playedIds = sortedProIds.filter(id => (proHoles[id]??0) > 0);
+              const prize = teamPrize(team.id);
               return (
                 <div key={team.id}>
                   <div className="lb-row" onClick={()=>setOpen(isOpen?null:team.id)}>
@@ -1733,6 +1805,9 @@ function LeaderboardView({ state }) {
                     <div style={{flex:1,minWidth:0}}>
                       <div className="lb-name">{team.name}</div>
                       <div className="lb-players">{team.player1} & {team.player2}</div>
+                      {prize.total > 0 && (
+                        <div style={{fontSize:10,fontFamily:'DM Mono,monospace',color:'var(--green)',marginTop:1}}>💵 ${prize.total}</div>
+                      )}
                     </div>
                     <div className="lb-right">
                       <div className={`lb-big ${cls}`}>{text}</div>
@@ -2564,13 +2639,16 @@ export default function App() {
     setSyncing(false);
   }
 
-  // Auto-sync ESPN scores every 60 seconds
+  // Auto-sync ESPN scores every 60 seconds — stops when tournament is locked
   useEffect(() => {
-    syncESPN(); // sync immediately on mount
-    const id = setInterval(syncESPN, 60_000);
+    if (state.tournament?.tournamentLocked) return; // tournament over — preserve final scores
+    syncESPN();
+    const id = setInterval(() => {
+      if (!stateRef.current?.tournament?.tournamentLocked) syncESPN();
+    }, 60_000);
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [state.tournament?.tournamentLocked]);
 
   // ── Load archives once on mount ─────────────────────────────────────
   useEffect(() => {
@@ -2813,7 +2891,6 @@ export default function App() {
 
   const TABS = [
     { id: 'leaderboard', label: 'Board',  ico: '🏆' },
-    { id: 'prizes',      label: 'Prizes', ico: '💵' },
     { id: 'skins',       label: 'Skins',  ico: '💰' },
     { id: 'scores',      label: 'Scores', ico: '✏️' },
     { id: 'stats',       label: 'Stats',  ico: '📈' },
@@ -2838,25 +2915,22 @@ export default function App() {
     <div className="app">
 
       <div className="hdr">
-        <div className="hdr-left">
-          <h1>{tournament.name || 'Golf Tournament'}</h1>
-          <p>
-            {tournament.pgaEvent || 'No PGA event set'}
-            {tournament.date ? ` · ${tournament.date}` : ''}
-            {' '}
-            <span style={{ fontSize: 9, fontFamily: 'DM Mono,monospace', color: syncColor }}>
-              {syncLabel}
-            </span>
-          </p>
-        </div>
+        <h1>{tournament.name || 'Golf Tournament'}</h1>
+        <p>
+          {tournament.pgaEvent || 'No PGA event set'}
+          {tournament.date ? ` · ${tournament.date}` : ''}
+          {' '}
+          <span style={{ fontSize: 9, fontFamily: 'DM Mono,monospace', color: syncColor }}>
+            {syncLabel}
+          </span>
+        </p>
       </div>
 
       {view === 'setup'       && <SetupView      state={state} setState={setState} adminMode={adminMode} setAdminMode={setAdminMode} setSyncStatus={setSyncStatus} syncESPN={syncESPN} syncing={syncing} syncMsg={syncMsg} archives={archives} archiveTournament={archiveTournament} viewArchive={viewArchive} setViewArchive={setViewArchive} showAdminPrompt={showAdminPrompt} setShowAdminPrompt={setShowAdminPrompt} pwInput={pwInput} setPwInput={setPwInput} pwError={pwError} setPwError={setPwError} />}
       {view === 'pros'        && <ProsView        state={state} />}
       {view === 'scores'      && <ScoresView      state={state} setState={setState} selTeam={selScoreTeam} setSelTeam={setSelScoreTeam} />}
       {view === 'leaderboard' && <LeaderboardView state={state} />}
-      {view === 'prizes'      && <PrizesView       state={state} />}
-      {view === 'skins'       && <SkinsView         state={state} />}
+      {view === 'skins'       && <SkinsView       state={state} />}
       {view === 'stats'       && <StatsView       state={state} />}
 
       <nav className="bnav">

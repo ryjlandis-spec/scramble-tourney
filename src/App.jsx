@@ -847,7 +847,8 @@ function SetupView({ state, setState, adminMode, setAdminMode, setSyncStatus, sy
     </div>
   </>
   );
-} — works on the dark background
+} 
+// Distinct colors for 10 teams — works on the dark background
 const TEAM_COLORS = [
   '#52C462','#4A9EE0','#E05252','#E8C96B','#A855F7',
   '#F97316','#EC4899','#14B8A6','#84CC16','#F59E0B',

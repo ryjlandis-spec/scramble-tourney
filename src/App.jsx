@@ -6,65 +6,57 @@ import {
 
 // ── CONSTANTS ──────────────────────────────────────────────────────────────
 const PROS = [
-  // ── Masters Champions (lifetime) ──
-  {id:'p1', name:'Scottie Scheffler'},    {id:'p2', name:'Rory McIlroy'},
-  {id:'p3', name:'Jon Rahm'},             {id:'p4', name:'Jordan Spieth'},
-  {id:'p5', name:'Hideki Matsuyama'},     {id:'p6', name:'Patrick Reed'},
-  {id:'p7', name:'Dustin Johnson'},       {id:'p8', name:'Charl Schwartzel'},
-  {id:'p9', name:'Adam Scott'},           {id:'p10',name:'Sergio Garcia'},
-  {id:'p11',name:'Bubba Watson'},         {id:'p12',name:'Mike Weir'},
-  {id:'p13',name:'Danny Willett'},        {id:'p14',name:'Jose Maria Olazabal'},
-  {id:'p15',name:'Fred Couples'},         {id:'p16',name:'Angel Cabrera'},
-  {id:'p17',name:'Vijay Singh'},          {id:'p18',name:'Zach Johnson'},
-  // ── Major Champions in field ──
-  {id:'p19',name:'Xander Schauffele'},    {id:'p20',name:'Collin Morikawa'},
-  {id:'p21',name:'Brooks Koepka'},        {id:'p22',name:'Justin Thomas'},
-  {id:'p23',name:'Bryson DeChambeau'},    {id:'p24',name:'Wyndham Clark'},
-  {id:'p25',name:'Matt Fitzpatrick'},     {id:'p26',name:'Brian Harman'},
-  {id:'p27',name:'Cameron Smith'},        {id:'p28',name:'J.J. Spaun'},
-  // ── Top contenders ──
-  {id:'p29',name:'Ludvig Aberg'},         {id:'p30',name:'Tommy Fleetwood'},
-  {id:'p31',name:'Cameron Young'},        {id:'p32',name:'Viktor Hovland'},
-  {id:'p33',name:'Patrick Cantlay'},      {id:'p34',name:'Justin Rose'},
-  {id:'p35',name:'Tyrrell Hatton'},       {id:'p36',name:'Robert MacIntyre'},
-  {id:'p37',name:'Shane Lowry'},          {id:'p38',name:'Min Woo Lee'},
-  {id:'p39',name:'Chris Gotterup'},       {id:'p40',name:'Nicolai Hojgaard'},
-  // ── Mid-tier ──
-  {id:'p41',name:'Si Woo Kim'},           {id:'p42',name:'Jason Day'},
-  {id:'p43',name:'Sungjae Im'},           {id:'p44',name:'Max Homa'},
-  {id:'p45',name:'Corey Conners'},        {id:'p46',name:'Sam Burns'},
-  {id:'p47',name:'Nick Taylor'},          {id:'p48',name:'Keegan Bradley'},
-  {id:'p49',name:'Gary Woodland'},        {id:'p50',name:'Jake Knapp'},
-  {id:'p51',name:'Sepp Straka'},          {id:'p52',name:'Harris English'},
-  {id:'p53',name:'Kurt Kitayama'},        {id:'p54',name:'Alex Noren'},
-  {id:'p55',name:'Russell Henley'},       {id:'p56',name:'Haotong Li'},
-  {id:'p57',name:'Sam Stevens'},          {id:'p58',name:'Ryan Fox'},
-  {id:'p59',name:'Ben Griffin'},          {id:'p60',name:'Carlos Ortiz'},
-  {id:'p61',name:'Akshay Bhatia'},        {id:'p62',name:'Maverick McNealy'},
-  {id:'p63',name:'Daniel Berger'},        {id:'p64',name:'Matt McCarty'},
-  {id:'p65',name:'Kristoffer Reitan'},    {id:'p66',name:'Jacob Bridgeman'},
-  {id:'p67',name:'Michael Brennan'},      {id:'p68',name:'Ryan Gerard'},
-  {id:'p69',name:'Max Greyserman'},       {id:'p70',name:'Rasmus Hojgaard'},
-  {id:'p71',name:'Harry Hall'},           {id:'p72',name:'John Keefer'},
-  {id:'p73',name:'Casey Jarvis'},         {id:'p74',name:'Aldrich Potgieter'},
-  {id:'p75',name:'Davis Riley'},          {id:'p76',name:'Andrew Novak'},
-  {id:'p77',name:'Brian Campbell'},       {id:'p78',name:'Nicolas Echavarria'},
-  {id:'p79',name:'Samuel Stevens'},       {id:'p80',name:'Marco Penge'},
-  {id:'p81',name:'Aaron Rai'},            {id:'p82',name:'Sami Valimaki'},
-  {id:'p83',name:'Michael Kim'},          {id:'p84',name:'Tom McKibbin'},
-  {id:'p85',name:'Naoyuki Kataoka'},      {id:'p86',name:'Rasmus Neergaard-Petersen'},
-  {id:'p87',name:'Tom McKibbin'},         {id:'p88',name:'Aldrich Potgieter'},
+  // ── U.S. Open winners (last 10 years) ──
+  {id:'p1', name:'J.J. Spaun'},           {id:'p2', name:'Bryson DeChambeau'},
+  {id:'p3', name:'Wyndham Clark'},        {id:'p4', name:'Matt Fitzpatrick'},
+  {id:'p5', name:'Jon Rahm'},             {id:'p6', name:'Gary Woodland'},
+  {id:'p7', name:'Brooks Koepka'},        {id:'p8', name:'Dustin Johnson'},
+  // ── Other major champions in field ──
+  {id:'p9', name:'Scottie Scheffler'},    {id:'p10',name:'Rory McIlroy'},
+  {id:'p11',name:'Xander Schauffele'},    {id:'p12',name:'Justin Thomas'},
+  {id:'p13',name:'Aaron Rai'},            {id:'p14',name:'Brian Harman'},
+  {id:'p15',name:'Cameron Smith'},        {id:'p16',name:'Collin Morikawa'},
+  // ── Top contenders / Tour Championship qualifiers ──
+  {id:'p17',name:'Ludvig Aberg'},         {id:'p18',name:'Akshay Bhatia'},
+  {id:'p19',name:'Keegan Bradley'},       {id:'p20',name:'Jacob Bridgeman'},
+  {id:'p21',name:'Sam Burns'},            {id:'p22',name:'Patrick Cantlay'},
+  {id:'p23',name:'Corey Conners'},        {id:'p24',name:'Harris English'},
+  {id:'p25',name:'Tommy Fleetwood'},      {id:'p26',name:'Chris Gotterup'},
+  {id:'p27',name:'Ben Griffin'},          {id:'p28',name:'Harry Hall'},
+  {id:'p29',name:'Russell Henley'},       {id:'p30',name:'Viktor Hovland'},
+  {id:'p31',name:'Sungjae Im'},           {id:'p32',name:'Shane Lowry'},
+  {id:'p33',name:'Robert MacIntyre'},     {id:'p34',name:'Hideki Matsuyama'},
+  {id:'p35',name:'Maverick McNealy'},     {id:'p36',name:'Andrew Novak'},
+  {id:'p37',name:'Justin Rose'},          {id:'p38',name:'Sepp Straka'},
+  {id:'p39',name:'Nick Taylor'},          {id:'p40',name:'Cameron Young'},
+  {id:'p41',name:'Patrick Reed'},         {id:'p42',name:'Tyrrell Hatton'},
+  {id:'p43',name:'Carlos Ortiz'},         {id:'p44',name:'Alex Noren'},
+  // ── Other likely top-60 OWGR qualifiers ──
+  {id:'p45',name:'Min Woo Lee'},          {id:'p46',name:'Si Woo Kim'},
+  {id:'p47',name:'Tom Kim'},              {id:'p48',name:'Adam Scott'},
+  {id:'p49',name:'Jason Day'},            {id:'p50',name:'Max Homa'},
+  {id:'p51',name:'Taylor Pendrith'},      {id:'p52',name:'Sahith Theegala'},
+  {id:'p53',name:'Denny McCarthy'},       {id:'p54',name:'Davis Thompson'},
+  {id:'p55',name:'Stephan Jaeger'},       {id:'p56',name:'Rasmus Hojgaard'},
+  {id:'p57',name:'Nicolai Hojgaard'},     {id:'p58',name:'Thomas Detry'},
+  {id:'p59',name:'Matthieu Pavon'},       {id:'p60',name:'J.T. Poston'},
+  {id:'p61',name:'Kurt Kitayama'},        {id:'p62',name:'Byeong Hun An'},
+  {id:'p63',name:'Lucas Glover'},         {id:'p64',name:'Eric Cole'},
+  {id:'p65',name:'Jhonattan Vegas'},      {id:'p66',name:'Joaquin Niemann'},
+  {id:'p67',name:'Padraig Harrington'},   {id:'p68',name:'Johnny Keefer'},
   // ── Amateurs ──
-  {id:'p89',name:'Mason Howell (a)'},     {id:'p90',name:'Jackson Herrington (a)'},
-  {id:'p91',name:'Ethan Fang (a)'},
+  {id:'p69',name:'Mason Howell (a)'},     {id:'p70',name:'Jackson Herrington (a)'},
+  {id:'p71',name:'Ethan Fang (a)'},       {id:'p72',name:'Hamilton Coleman (a)'},
+  {id:'p73',name:'Brandon Holtz (a)'},    {id:'p74',name:'Jackson Koivun (a)'},
+  {id:'p75',name:'Mateo Pulcini (a)'},
 ];
 const PROS_MAP = Object.fromEntries(PROS.map(p => [p.id, p]));
 
-const DEFAULT_PAR    = [4,3,4,3,3,5,3,3,4, 3,4,3,3,4,3,4,3,3]; // par 62
-const HOLE_HCP       = [3,15,17,1,13,7,11,5,9, 16,2,14,12,8,10,4,6,18];
-const HOLE_YDS       = [356,150,262,156,158,397,150,168,301, 143,333,97,154,260,129,321,149,118];
-const COURSE_RATING  = 59.6;
-const COURSE_SLOPE   = 100;
+const DEFAULT_PAR    = [4,5,3,4,4,3,4,4,5, 4,3,4,5,4,5,3,4,4]; // par 72 — Blue tees
+const HOLE_HCP       = [3,7,13,11,9,15,17,1,5, 6,10,2,14,16,18,12,4,8];
+const HOLE_YDS       = [369,450,118,317,331,124,300,420,491, 345,178,330,469,300,454,162,332,327]; // Blue tees
+const COURSE_RATING  = 68.8;
+const COURSE_SLOPE   = 125;
 const STORAGE_KEY    = 'scramble_golf_v9';
 const FS_DOC         = 'tournament/state';
 const FS_ARCHIVE     = 'tournament/archive';

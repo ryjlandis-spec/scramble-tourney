@@ -2262,7 +2262,7 @@ function PrizesView({ state }) {
       <div className="sec">
         <div className="sh">Prize Summary</div>
         <div className="alert green" style={{fontSize:11,marginBottom:12}}>
-          Overall 1st ${tournament.prizeOverall1 ?? 500} · Overall 2nd ${tournament.prizeOverall2 ?? 350} · Golf Net 1st ${tournament.prizeGolf1 ?? 150} · Skins ${totalPot}
+          Overall 1st ${tournament.prizeOverall1 ?? 500}{(tournament.prizeOverall2 ?? 350) > 0 ? ` · Overall 2nd $${tournament.prizeOverall2 ?? 350}` : ''} · Golf Net 1st ${tournament.prizeGolf1 ?? 150} · Skins ${totalPot}
         </div>
 
         <div className="card" style={{padding:'0 14px'}}>

@@ -2829,6 +2829,10 @@ export default function App() {
       // Immediately write blank state to Firestore so all clients reset together
       const freshState = { ...INIT, par: DEFAULT_PAR };
       const [col, docId] = FS_DOC.split('/');
+      // Cancel any pending debounced save and bump the generation so a stale
+      // save queued before this archive can't re-upload the old tournament.
+      archiveGen.current += 1;
+      if (saveTimer.current) clearTimeout(saveTimer.current);
       await setDoc(doc(db, col, docId), { state: toFirestore(freshState), updatedAt: Date.now() });
       saveLocal(freshState);
       setState(freshState);
@@ -2860,13 +2864,19 @@ export default function App() {
   // everyone's data before it knows what's already in Firestore.
   const hasReceivedSnapshot = useRef(false);
 
-  // userEditedAt: 30-second guard — Firestore snapshots won't overwrite local state
-  // for 30 seconds after any user edit (gives the Firestore write time to land).
+  // userEditedAt: short guard — Firestore snapshots won't overwrite local state
+  // for 3 seconds after any user edit (protects an in-progress edit; the
+  // smart-merge handles real concurrent-write data protection).
   const userEditedAt = useRef(0);
 
   // mounted: skip the very first effect run (initial render — no need to save)
   const mounted   = useRef(false);
   const saveTimer = useRef(null);
+
+  // archiveGen: bumped whenever the tournament is archived/reset. Any save that
+  // was queued before the archive checks this and aborts, so a stale debounced
+  // write can never re-upload the old tournament's data after a reset.
+  const archiveGen = useRef(0);
 
   // stateRef: always-current state for the onSnapshot closure (no stale closures)
   const stateRef = useRef(state);
@@ -2905,15 +2915,18 @@ export default function App() {
         const remote = fromFirestore(snap.data().state);
         if (!remote) return;
 
-        // Don't overwrite local state while user is actively editing.
-        // 30-second window gives the save plenty of time to reach Firestore.
-        if (Date.now() - userEditedAt.current < 30000) return;
+        // Don't overwrite local state while user is actively typing.
+        // Short 3s window: long enough to protect an in-progress edit from being
+        // clobbered mid-keystroke, short enough that teammates' scores still
+        // appear near-instantly. (The smart-merge below is the real data-loss
+        // protection — this guard just prevents flicker during active typing.)
+        if (Date.now() - userEditedAt.current < 3000) return;
 
-        // Has THIS device made a local edit in the last 30s? If not, it's a
+        // Has THIS device made a local edit in the last 3s? If not, it's a
         // view-only client (e.g. someone watching the leaderboard) and should
         // accept the remote state cleanly — no merge. This prevents stale teams
         // and old tournament data in localStorage from bleeding through forever.
-        const recentlyEdited = Date.now() - userEditedAt.current < 30000;
+        const recentlyEdited = Date.now() - userEditedAt.current < 3000;
 
         let merged;
         if (!recentlyEdited) {
@@ -3053,8 +3066,12 @@ export default function App() {
     // Genuine user edit — record when it happened and queue a save
     userEditedAt.current = Date.now();
 
+    const genAtQueue = archiveGen.current;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
+      // If an archive/reset happened while this save was queued, abort —
+      // otherwise we'd re-upload the old tournament's data on top of the reset.
+      if (genAtQueue !== archiveGen.current) return;
       setSyncStatus('syncing');
       try {
         // Write full state but strip ESPN-only fields
@@ -3069,6 +3086,7 @@ export default function App() {
         setSyncStatus('error:' + (e?.code || e?.message || 'unknown'));
         // Retry after 5 seconds — covers transient network drops (QUIC errors etc.)
         saveTimer.current = setTimeout(async () => {
+          if (genAtQueue !== archiveGen.current) return;
           try {
             const clean = toFirestore(stateRef.current);
             const [col2, docId2] = FS_DOC.split('/');
@@ -3080,7 +3098,7 @@ export default function App() {
           }
         }, 5000);
       }
-    }, 3000);
+    }, 1200);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 

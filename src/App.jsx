@@ -57,7 +57,7 @@ const PROS = [
   {id:'p86',name:'Mason Howell (a)'},     {id:'p87',name:'Jackson Herrington (a)'},
   {id:'p88',name:'Ethan Fang (a)'},       {id:'p89',name:'Hamilton Coleman (a)'},
   {id:'p90',name:'Brandon Holtz (a)'},    {id:'p91',name:'Jackson Koivun (a)'},
-  {id:'p92',name:'Mateo Pulcini (a)'},
+  {id:'p92',name:'Mateo Pulcini (a)'},    {id:'p93',name:'Vaughn Harber (a)'},
 ];
 const PROS_MAP = Object.fromEntries(PROS.map(p => [p.id, p]));
 
@@ -2880,11 +2880,17 @@ export default function App() {
     return () => document.head.removeChild(el);
   }, []);
 
-  // ── Real-time Firestore listener ────────────────────────────────────
+  // ── Real-time Firestore listener (self-healing) ─────────────────────
   useEffect(() => {
     const [col, docId] = FS_DOC.split('/');
-    const unsub = onSnapshot(
-      doc(db, col, docId),
+    let unsub = null;
+    let reconnectTimer = null;
+    let stopped = false;
+
+    function subscribe() {
+      if (stopped) return;
+      unsub = onSnapshot(
+        doc(db, col, docId),
       (snap) => {
         setSyncStatus(prev => {
           // On reconnection (offline → live), extend the userEditedAt guard.
@@ -2980,15 +2986,28 @@ export default function App() {
       (err) => {
         console.warn('Firestore error:', err);
         setSyncStatus('offline');
-        // Protect local state: treat the disconnect as a "user edit" so the
-        // reconnect snapshot won't overwrite local data for 60 seconds.
-        // This gives the retry write (triggered by __offline__ != stateStr)
-        // time to land before any incoming snapshot can replace local state.
-        userEditedAt.current = Date.now() + 30_000; // extend window by 60s total
+        // NOTE: we deliberately do NOT push userEditedAt into the future here.
+        // The smart-merge logic below already protects non-empty local scores
+        // and local-only teams from being overwritten, so a viewing-only device
+        // (e.g. someone watching the leaderboard on their phone) syncs the
+        // latest data immediately on reconnect instead of being blocked for 60s.
         lastFirestoreState.current = '__offline__';
+        // CRITICAL: onSnapshot is permanently dead after an error fires.
+        // Tear it down and re-subscribe so the listener (and live status)
+        // recovers automatically instead of being stuck offline forever.
+        if (unsub) { try { unsub(); } catch (_) {} unsub = null; }
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        reconnectTimer = setTimeout(subscribe, 3000);
       }
     );
-    return () => unsub();
+    }
+
+    subscribe();
+    return () => {
+      stopped = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (unsub) { try { unsub(); } catch (_) {} }
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

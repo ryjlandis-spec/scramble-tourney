@@ -2909,6 +2909,24 @@ export default function App() {
         // 30-second window gives the save plenty of time to reach Firestore.
         if (Date.now() - userEditedAt.current < 30000) return;
 
+        // Has THIS device made a local edit in the last 30s? If not, it's a
+        // view-only client (e.g. someone watching the leaderboard) and should
+        // accept the remote state cleanly — no merge. This prevents stale teams
+        // and old tournament data in localStorage from bleeding through forever.
+        const recentlyEdited = Date.now() - userEditedAt.current < 30000;
+
+        let merged;
+        if (!recentlyEdited) {
+          // Clean accept — trust Firestore entirely (just enforce current course par,
+          // and keep ESPN-derived fields which are recomputed locally)
+          merged = {
+            ...remote,
+            par: DEFAULT_PAR,
+            proScores: stateRef.current.proScores || {},
+            proHoles: stateRef.current.proHoles || {},
+          };
+        } else {
+        // ── Smart merge (only when this device has recent local edits) ──
         // Smart merge tournament — never overwrite a non-default local value with remote
         const localTournament = stateRef.current.tournament || {};
         const remoteTournament = remote.tournament || {};
@@ -2964,7 +2982,7 @@ export default function App() {
           if (!remoteTeamIds.has(lt.id)) mergedTeams.push(lt);
         });
 
-        const merged = {
+        merged = {
           ...remote,
           par: DEFAULT_PAR,
           tournament: mergedTournament,
@@ -2972,11 +2990,13 @@ export default function App() {
           proScores: stateRef.current.proScores || {},
           proHoles: stateRef.current.proHoles || {},
         };
+        }
 
         // Compare without ESPN fields — they must never be the reason for a write
         const mergedStripped   = JSON.stringify(espnStrip(merged));
         const currentStripped  = JSON.stringify(espnStrip(stateRef.current));
         if (mergedStripped === currentStripped) return;
+
 
         lastFirestoreState.current = mergedStripped;
         setState(merged);

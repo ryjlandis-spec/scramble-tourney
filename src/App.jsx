@@ -101,7 +101,7 @@ function namesMatch(espnName, ourName) {
 }
 
 const INIT = {
-  tournament: { name:'Saturday Scramble', pgaEvent:'', date:'', skinsPerHole:400, buyIn:100, proCount:1, includeHandicap:false },
+  tournament: { name:'Saturday Scramble', pgaEvent:'', date:'', skinsPerHole:400, buyIn:100, proCount:1, includeHandicap:false, prizeOverall1:500, prizeOverall2:350, prizeGolf1:150 },
   teams: [],
   proScores: {},
   proHoles: {},
@@ -501,9 +501,9 @@ function ArchiveView({ archive, onClose }) {
   function teamPrize(teamId) {
     const op = ranked.findIndex(r=>r.team.id===teamId);
     const gp = golfNetRanked.findIndex(r=>r.id===teamId);
-    const p1 = op===0 && ranked[0]?.netCombined!==null ? 500 : 0;
-    const p2 = op===1 && ranked[1]?.netCombined!==null ? 350 : 0;
-    const p3 = gp===0 && golfNetRanked[0]?.golfNet!==null ? 150 : 0;
+    const p1 = op===0 && ranked[0]?.netCombined!==null ? (tournament.prizeOverall1 ?? 500) : 0;
+    const p2 = op===1 && ranked[1]?.netCombined!==null ? (tournament.prizeOverall2 ?? 350) : 0;
+    const p3 = gp===0 && golfNetRanked[0]?.golfNet!==null ? (tournament.prizeGolf1 ?? 150) : 0;
     const sk = skinsTally[teamId] || 0;
     return p1+p2+p3+sk;
   }
@@ -623,9 +623,9 @@ function ArchiveView({ archive, onClose }) {
               .map(({team,total},i)=>{
                 const op=ranked.findIndex(r=>r.team.id===team.id);
                 const gp=golfNetRanked.findIndex(r=>r.id===team.id);
-                const p1=op===0&&ranked[0]?.netCombined!==null?500:0;
-                const p2=op===1&&ranked[1]?.netCombined!==null?350:0;
-                const p3=gp===0&&golfNetRanked[0]?.golfNet!==null?150:0;
+                const p1=op===0&&ranked[0]?.netCombined!==null?(tournament.prizeOverall1 ?? 500):0;
+                const p2=op===1&&ranked[1]?.netCombined!==null?(tournament.prizeOverall2 ?? 350):0;
+                const p3=gp===0&&golfNetRanked[0]?.golfNet!==null?(tournament.prizeGolf1 ?? 150):0;
                 const sk=skinsTally[team.id]||0;
                 return (
                   <div key={team.id} style={{display:'flex',alignItems:'center',gap:10,padding:'12px 0',borderBottom:'1px solid var(--border)'}}>
@@ -748,6 +748,21 @@ function SetupView({ state, setState, adminMode, setAdminMode, setSyncStatus, sy
                 <div style={{flex:1}}>
                   <label className="lbl">Overall Buy-In ($)</label>
                   <input className="inp" type="number" value={tournament.buyIn} onChange={e=>setT('buyIn',Number(e.target.value))} />
+                </div>
+              </div>
+              <label className="lbl">Prize Money ($)</label>
+              <div style={{display:'flex',gap:8,marginBottom:12}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:10,color:'var(--muted)',marginBottom:3,fontFamily:'DM Mono,monospace'}}>1st Overall</div>
+                  <input className="inp" type="number" value={tournament.prizeOverall1 ?? 500} onChange={e=>setT('prizeOverall1',Number(e.target.value))} />
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:10,color:'var(--muted)',marginBottom:3,fontFamily:'DM Mono,monospace'}}>2nd Overall</div>
+                  <input className="inp" type="number" value={tournament.prizeOverall2 ?? 350} onChange={e=>setT('prizeOverall2',Number(e.target.value))} />
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:10,color:'var(--muted)',marginBottom:3,fontFamily:'DM Mono,monospace'}}>1st Golf</div>
+                  <input className="inp" type="number" value={tournament.prizeGolf1 ?? 150} onChange={e=>setT('prizeGolf1',Number(e.target.value))} />
                 </div>
               </div>
               <label className="lbl">Pro Scores Used (Best N of 6)</label>
@@ -1817,8 +1832,8 @@ function LeaderboardView({ state }) {
   },[teams,proScores,tournament,proHoles,mode]);
 
   const PRIZES = {
-    overall_net: { rank1: 500, rank2: 350, label: 'Overall Net' },
-    golf_net:    { rank1: 150, rank2: null, label: 'Golf Net' },
+    overall_net: { rank1: tournament.prizeOverall1 ?? 500, rank2: tournament.prizeOverall2 ?? 350, label: 'Overall Net' },
+    golf_net:    { rank1: tournament.prizeGolf1 ?? 150, rank2: null, label: 'Golf Net' },
     golf_gross:  { rank1: null, rank2: null, label: 'Golf Gross' },
     prizes:      { rank1: null, rank2: null, label: 'Prizes' },
   };
@@ -1851,9 +1866,9 @@ function LeaderboardView({ state }) {
   function teamPrize(teamId) {
     const overallPos = overallRankedIds.findIndex(r=>r.id===teamId);
     const golfNetPos = golfNetRankedIds.findIndex(r=>r.id===teamId);
-    const p1 = overallPos===0 && overallRankedIds[0]?.netCombined!==null ? 500 : 0;
-    const p2 = overallPos===1 && overallRankedIds[1]?.netCombined!==null ? 350 : 0;
-    const p3 = golfNetPos===0 && golfNetRankedIds[0]?.golfNet!==null ? 150 : 0;
+    const p1 = overallPos===0 && overallRankedIds[0]?.netCombined!==null ? (tournament.prizeOverall1 ?? 500) : 0;
+    const p2 = overallPos===1 && overallRankedIds[1]?.netCombined!==null ? (tournament.prizeOverall2 ?? 350) : 0;
+    const p3 = golfNetPos===0 && golfNetRankedIds[0]?.golfNet!==null ? (tournament.prizeGolf1 ?? 150) : 0;
     const sk = skinsTally[teamId] || 0;
     return { p1, p2, p3, sk, total: p1+p2+p3+sk };
   }
@@ -2203,9 +2218,9 @@ function PrizesView({ state }) {
   const allTeams = teams.map(t=>{
     const overallPos = overallRanked.findIndex(r=>r.team.id===t.id);
     const golfNetPos = golfNetRanked.findIndex(r=>r.team.id===t.id);
-    const overall1   = overallPos === 0 && overallRanked[0]?.netCombined !== null ? 500 : 0;
-    const overall2   = overallPos === 1 && overallRanked[1]?.netCombined !== null ? 350 : 0;
-    const golfNet1   = golfNetPos === 0 && golfNetRanked[0]?.golfNet !== null ? 150 : 0;
+    const overall1   = overallPos === 0 && overallRanked[0]?.netCombined !== null ? (tournament.prizeOverall1 ?? 500) : 0;
+    const overall2   = overallPos === 1 && overallRanked[1]?.netCombined !== null ? (tournament.prizeOverall2 ?? 350) : 0;
+    const golfNet1   = golfNetPos === 0 && golfNetRanked[0]?.golfNet !== null ? (tournament.prizeGolf1 ?? 150) : 0;
     const skins$     = skinsTally[t.id]?.total || 0;
     const total      = overall1 + overall2 + golfNet1 + skins$;
     return { team:t, overall1, overall2, golfNet1, skins:skins$, total };
@@ -2216,7 +2231,7 @@ function PrizesView({ state }) {
       <div className="sec">
         <div className="sh">Prize Summary</div>
         <div className="alert green" style={{fontSize:11,marginBottom:12}}>
-          Overall 1st $500 · Overall 2nd $350 · Golf Net 1st $150 · Skins ${totalPot}
+          Overall 1st ${tournament.prizeOverall1 ?? 500} · Overall 2nd ${tournament.prizeOverall2 ?? 350} · Golf Net 1st ${tournament.prizeGolf1 ?? 150} · Skins ${totalPot}
         </div>
 
         <div className="card" style={{padding:'0 14px'}}>

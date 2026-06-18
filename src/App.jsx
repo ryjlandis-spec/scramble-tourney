@@ -79,6 +79,16 @@ const PROS = [
   {id:'p139', name:'Ryder Cowan (a)'},  {id:'p140', name:'Miles Russell (a)'},
   {id:'p141', name:'Chase Kyes (a)'},  {id:'p142', name:'Bryan Lee (a)'},
   {id:'p143', name:'Preston Stout (a)'},
+  // Additional confirmed field members
+  {id:'p144', name:'Graeme McDowell'},  {id:'p145', name:'Peter Uihlein'},
+  {id:'p146', name:'Dylan Wu'},  {id:'p147', name:'Ben Silverman'},
+  {id:'p148', name:'Emiliano Grillo'},  {id:'p149', name:'Marcelo Rozo'},
+  {id:'p150', name:'Ben Kohles'},  {id:'p151', name:'Keith Mitchell'},
+  {id:'p152', name:'Ryuichi Oiwa'},  {id:'p153', name:'Kaito Onishi'},
+  {id:'p154', name:'Taihei Sato'},  {id:'p155', name:'Jake Peacock'},
+  {id:'p156', name:'Chandler Phillips'},  {id:'p157', name:'Nathan Kimsey'},
+  {id:'p158', name:'T.K. Kim'},  {id:'p159', name:'Eric Lee (a)'},
+  {id:'p160', name:'Marek Fleming (a)'},
 ];
 const PROS_MAP = Object.fromEntries(PROS.map(p => [p.id, p]));
 

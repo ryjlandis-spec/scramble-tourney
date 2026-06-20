@@ -86,7 +86,6 @@ const PROS = [
   {id:'p150', name:'Ben Kohles'},  {id:'p151', name:'Keith Mitchell'},
   {id:'p152', name:'Ryuichi Oiwa'},  {id:'p153', name:'Kaito Onishi'},
   {id:'p154', name:'Taihei Sato'},  {id:'p155', name:'Jake Peacock'},
-  {id:'p156', name:'Chandler Phillips'},  {id:'p157', name:'Nathan Kimsey'},
   {id:'p158', name:'T.K. Kim'},  {id:'p159', name:'Eric Lee (a)'},
   {id:'p160', name:'Marek Fleming (a)'},
 ];
@@ -129,6 +128,19 @@ function namesMatch(espnName, ourName) {
     return aFirst === bFirst;
   }
   return false;
+}
+
+// Robustly turn an ESPN score-to-par into a number.
+// Handles numbers (-2, 0), and display strings ("E", "EVEN", "+3", "-1", "PAR").
+// Returns null if there's genuinely no score yet (player hasn't started).
+function parseScoreToPar(raw) {
+  if (raw === null || raw === undefined || raw === '') return null;
+  if (typeof raw === 'number') return Number.isNaN(raw) ? null : raw;
+  const t = String(raw).trim().toUpperCase();
+  if (t === '' || t === '-' || t === '--') return null;
+  if (t === 'E' || t === 'EVEN' || t === 'PAR') return 0;
+  const n = parseInt(t.replace('+', ''), 10);
+  return Number.isNaN(n) ? null : n;
 }
 
 const INIT = {
@@ -274,9 +286,14 @@ function toFirestore(state) {
   // proScores and proHoles are ESPN-derived and local-only — never write to Firestore.
   // Every client recomputes them from the ESPN auto-sync independently.
   const { proHoles: _ph, proScores: _ps, ...rest } = state;
+  // JSON round-trip strips `undefined` values, which Firestore rejects outright.
+  // SG position objects carry optional fields (mulligan, bothMissed, player) that
+  // are undefined on most positions — without this, setDoc() throws and the save
+  // fails, which previously left scores/teams unsynced and could wipe a device.
+  const safe = JSON.parse(JSON.stringify(rest));
   return {
-    ...rest,
-    teams: (state.teams || []).map(t => ({
+    ...safe,
+    teams: (safe.teams || []).map(t => ({
       ...t,
       shots: Object.fromEntries(
         (t.shots || []).map((hole, i) => [String(i), hole || []])
@@ -2799,7 +2816,14 @@ export default function App() {
       const espnMap = {};
       competitors.forEach(c => {
         const name = c.athlete?.displayName;
-        const s = c.statistics?.find(x => x.name === 'scoreToPar');
+        const stats = c.statistics || [];
+        const sStat = stats.find(x => x.name === 'scoreToPar');
+        // Try numeric value first, then the display string ("E", "+2", "-1"),
+        // then the competitor's top-level score field as a last resort.
+        let score = parseScoreToPar(sStat?.value);
+        if (score === null) score = parseScoreToPar(sStat?.displayValue);
+        if (score === null) score = parseScoreToPar(c.score?.displayValue ?? c.score);
+        if (score === null) score = 0; // player hasn't started → even
         const hStat = c.statistics?.find(x =>
           x.name === 'holesPlayed' || x.name === 'thru' || x.name === 'holes'
         );
@@ -2807,7 +2831,7 @@ export default function App() {
         const holesDisplay = holes !== null ? holes : (c.status?.displayThru && c.status.displayThru !== '-' ? c.status.displayThru : null);
         const statusName = c.status?.type?.name || '';
         const missedCut = statusName.includes('MISSED_CUT') || statusName.includes('CUT') || statusName === 'STATUS_CUT';
-        if (name) espnMap[name] = { score: s?.value ?? 0, holes: holesDisplay, missedCut };
+        if (name) espnMap[name] = { score, holes: holesDisplay, missedCut };
       });
 
       // Find the cut line: worst (highest) score among players who made the cut
@@ -2824,7 +2848,8 @@ export default function App() {
         if (found) {
           const { score, holes, missedCut } = found[1];
           // Missed cut penalty: cutScore + 1 (worst score that made cut + 1)
-          newScores[pro.id] = (missedCut && cutScore !== null) ? cutScore + 1 : score;
+          const finalScore = (missedCut && cutScore !== null) ? cutScore + 1 : score;
+          newScores[pro.id] = Number.isFinite(Number(finalScore)) ? Number(finalScore) : 0;
           if (holes !== null) newHoles[pro.id] = holes;
           matched++;
         }

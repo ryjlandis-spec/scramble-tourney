@@ -495,8 +495,8 @@ html,body{background:var(--bg);color:var(--cream);font-family:'Inter',sans-serif
 /* Totals row */
 .tot-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px;}
 /* Shot modal */
-.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:50;display:flex;align-items:flex-end;}
-.modal{background:var(--bg2);border-top:1px solid var(--border2);border-radius:16px 16px 0 0;width:100%;max-width:480px;margin:0 auto;padding:18px 16px 28px;max-height:85vh;overflow-y:auto;}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:150;display:flex;align-items:flex-end;}
+.modal{background:var(--bg2);border-top:1px solid var(--border2);border-radius:16px 16px 0 0;width:100%;max-width:480px;margin:0 auto;padding:18px 16px calc(28px + env(safe-area-inset-bottom));max-height:85vh;overflow-y:auto;}
 .modal-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;}
 .shot-row{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;}
 .shot-num{font-family:'Playfair Display',serif;font-size:18px;color:var(--gold);margin-right:8px;}
